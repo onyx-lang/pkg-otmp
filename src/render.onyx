@@ -104,7 +104,7 @@ render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error 
                     // map is only used within this function, so long as the temporary
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
-                    scope->put(tprintf("{}", it.index), resolve_expr_to_any(r, *it.value));
+                    scope->put(tprintf("{}", it.index), resolve_expr_to_any(r, it.value));
                 }
 
                 if err := render_instructions(r, template.instructions); err != .None {
