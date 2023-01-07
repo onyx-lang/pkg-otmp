@@ -96,7 +96,7 @@ render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error 
                     continue;
                 }
 
-                for iter.as_iterator(partial.arguments)
+                for iter.as_iter(partial.arguments)
                     |> iter.enumerate()
                 {
                     // ROBUSTNESS: Normally, allocating to a temporary allocator for

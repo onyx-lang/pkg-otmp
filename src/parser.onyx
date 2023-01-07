@@ -264,7 +264,7 @@ delete :: (tl: ^TemplateLexer) {
 }
 
 #overload
-iter.as_iterator :: (tl: ^TemplateLexer) => {
+iter.as_iter :: (tl: ^TemplateLexer) => {
     return iter.generator(
         ^.{ tl = tl, hit_error = false },
         
