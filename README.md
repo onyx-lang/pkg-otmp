@@ -66,9 +66,9 @@ registry->render_template("index", ^stdio.print_writer, ^.{
 <!-- Unlike Jinja/Mustache/etc, OTMP has you declare the contents of blocks
      BEFORE you "extend" another template. -->
 
-{{ block "title }} This is the title! {{ endblock }}
+{{ block "title" }} This is the title! {{ endblock }}
 
-{{ block "content }}
+{{ block "content" }}
     
     <!-- Use "$" to access variables -->
     <h1>{% $var1 %}</h1>

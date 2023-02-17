@@ -1,7 +1,8 @@
 package otmp
 
-use core {io, tprintf, iter}
+use core {io, tprintf, iter, Optional}
 use core.misc {
+    as_any,
     any_iter,
     any_dereference,
     any_selector,
@@ -151,8 +152,17 @@ resolve_expr_to_any :: (use r: ^TemplateRenderer, expr: ^TExpr) -> any {
 
             sub_any := resolve_expr_to_any(r, subscript.var);
             sub := any_to_int(resolve_expr_to_any(r, subscript.sub));
+            if !sub {
+                return .{ null, void };
+            }
 
-            return any_subscript(sub_any, ~~ sub);
+            return any_subscript(sub_any, ~~ sub.value);
+        }
+
+        case TExprInt {
+            int := cast(^TExprInt) expr;
+
+            return as_any(^int.val);
         }
     }
 
@@ -162,7 +172,7 @@ resolve_expr_to_any :: (use r: ^TemplateRenderer, expr: ^TExpr) -> any {
 
 #local
 // :StandardLibrary
-any_to_int :: (v: any) -> i64 {
+any_to_int :: (v: any) -> Optional(i64) {
     switch v.type {
         C(u32);
         C(i32);
@@ -170,9 +180,9 @@ any_to_int :: (v: any) -> i64 {
         C(i64);
 
         C :: macro (T: type_expr) {
-            case T do return ~~ *cast(^T) v.data;
+            case T do return Optional.make(cast(i64, *cast(^T) v.data));
         }
     }
 
-    return 0;
+    return .{};
 }

@@ -27,18 +27,36 @@ delete :: (t: ^TemplateRegistry) {
 
 #inject TemplateRegistry {
     load_directory :: (self: ^TemplateRegistry, dir: str, extension: str) {
-        for os.list_directory(dir) {
-            if string.ends_with(it->name(), extension) {
-                name := it->name();
-                name = name[0 .. string.last_index_of(name, #char ".")];
+        recurse :: (self: ^TemplateRegistry, dir, prefix, extension: str) {
+            for os.list_directory(dir) {
+                it_name := it->name();
 
-                self->load_template(name, tprintf("{}/{}", dir, it->name()));
-            }
+                if string.ends_with(it_name, extension) {
+                    name := it_name;
+                    name = name[0 .. string.last_index_of(name, #char ".")];
 
-            if it.type == .Directory {
-                self->load_directory(tprintf("{}/{}", dir, it->name()), extension);
+                    if prefix {
+                        name = tprintf("{}/{}", prefix, name);
+                    }
+
+                    self->load_template(name, tprintf("{}/{}", dir, it_name));
+                }
+
+                if it.type == .Directory {
+                    p := it_name;
+                    if prefix {
+                        p = tprintf("{}/{}", prefix, it_name);
+                    }
+
+                    recurse(self,
+                        tprintf("{}/{}", dir, it_name), 
+                        p,
+                        extension);
+                }
             }
         }
+
+        recurse(self, dir, "", extension);
     }
 
     load_template :: (self: ^TemplateRegistry, name: str, filename: str) -> Error {
