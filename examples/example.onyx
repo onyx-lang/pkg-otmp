@@ -1,0 +1,14 @@
+
+#load "./../module"
+
+use core
+
+
+main :: () {
+    registry := otmp.registry();
+    registry->load_directory("./templates", ".html");
+
+    registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!" });
+    io.stream_flush(^stdio.stream);
+}
+

@@ -477,7 +477,7 @@ parse_expression :: (use p: ^TemplateParser) -> (^TExpr, ParseError) {
         case .Open_Bracket {
             p.l->consume();
 
-            expr, err' := parse_expression(p);
+            expr, err~ := parse_expression(p);
             if err != .None do break break;
 
             subscript_expr := make_expr(t, TExprSubscript);
