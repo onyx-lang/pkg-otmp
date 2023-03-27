@@ -1,6 +1,6 @@
 package otmp
 
-use core {io, tprintf, iter, Optional}
+use core {package, io, tprintf, iter, Optional}
 use core.misc {
     as_any,
     any_iter,

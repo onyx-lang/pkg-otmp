@@ -1,8 +1,8 @@
 
 #load "./../module"
 
-use core
-
+use core {*}
+use otmp
 
 main :: () {
     registry := otmp.registry();

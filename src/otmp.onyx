@@ -1,7 +1,7 @@
 package otmp
 
 use core.alloc {as_allocator, arena}
-use core {array, io, os, string, tprintf, printf}
+use core {package, array, io, os, string, tprintf, printf}
 
 //
 // Template Registry
