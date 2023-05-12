@@ -31,6 +31,10 @@ delete :: (t: ^TemplateRegistry) {
             for os.list_directory(dir) {
                 it_name := it->name();
 
+                if it_name == "." || it_name == ".." {
+                    continue;
+                }
+
                 if string.ends_with(it_name, extension) {
                     name := it_name;
                     name = name[0 .. string.last_index_of(name, #char ".")];
