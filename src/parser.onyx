@@ -414,7 +414,7 @@ parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
             name, err := parse_string(p);
             if err.tag != .None do return null, err;
 
-            retval := make_node(t, .{
+            retval = make_node(t, .{
                 ExprBlock = .{ block_name = name }
             });
         }
