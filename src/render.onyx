@@ -114,7 +114,11 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 var := resolve_expr_to_any(r, cast(&TNode) it);
                 if !var do continue;
 
-                io.write_format_va(w, "{}", .[var->unwrap()]);
+                // There are weird bugs related to Optional any's (? any), where
+                // the wrong any is returned. Unwrapping as a pointer fixes this
+                // bug.
+                value := var->unwrap_ptr();
+                io.write_format_va(w, "{}", .[*value]);
             }
 
             case #default {
@@ -131,20 +135,18 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
 resolve_expr_to_any :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
     switch expr {
         case .ExprVar => &var {
-            // :ErrorHandling if variable does not exist
             return scope->get_opt(var.var_name);
         }
 
         case .ExprSelector => &selector {
-            sub_any := resolve_expr_to_any(r, selector.var);
-            return sub_any->transform(x => any_dereference(x))
-                          ->transform((x, [selector]) => any_selector(x, selector.field));
+            return resolve_expr_to_any(r, selector.var)?
+                |> any_dereference()
+                |> any_selector(selector.field);
         }
 
         case .ExprSubscript => &subscript {
             sub_any := resolve_expr_to_any(r, subscript.var)?;
-            sub := resolve_expr_to_any(r, subscript.sub)
-                 ->and_then(any_to_int);
+            sub := resolve_expr_to_any(r, subscript.sub)->and_then(any_to_int);
             switch sub {
                 case .Some => v do return any_subscript(sub_any, ~~ v);
                 case #default do return .{};
