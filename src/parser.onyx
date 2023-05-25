@@ -4,21 +4,21 @@ package otmp
 use core {package, string, array, iter, conv}
 use core.alloc {as_allocator}
 
-ParseError :: enum {
-    None;
-    Unexpected_Token;
-    Expected_Token;
+ParseError :: union {
+    None: void;
+    Unexpected_Token: TemplateToken;
+    Expected_Token: TemplateToken.Type;
 
-    Nested_Command;
+    Nested_Command: TemplateToken;
 
-    Cannot_Nest_Blocks;
+    Cannot_Nest_Blocks: TemplateToken;
 }
 
 
 #package
 TemplateLexer :: struct {
     // The input string
-    s: ^str;
+    s: &str;
     line: u32;
     col:  u32;
 
@@ -67,7 +67,7 @@ TemplateToken :: struct {
 }
 
 #inject TemplateLexer {
-    peek :: (self: ^TemplateLexer, n := 0) -> TemplateToken {
+    peek :: (self: &TemplateLexer, n := 0) -> TemplateToken {
         while n >= self.token_buffer.length {
             next := self->eat_next_token();
             if next.type == .EOF do return next;
@@ -78,10 +78,10 @@ TemplateToken :: struct {
         return self.token_buffer[n];
     }
 
-    consume :: (self: ^TemplateLexer) -> TemplateToken {
+    consume :: (self: &TemplateLexer) -> TemplateToken {
         if !array.empty(self.token_buffer) {
             tkn := self.token_buffer[0];
-            array.delete(^self.token_buffer, 0);
+            array.delete(&self.token_buffer, 0);
             return tkn;
         }
 
@@ -89,7 +89,7 @@ TemplateToken :: struct {
         return tkn;
     }
 
-    eat_characters :: (self: ^TemplateLexer, chars := 1) -> str {
+    eat_characters :: (self: &TemplateLexer, chars := 1) -> str {
         for chars {
             if self.s.data[it] == #char "\n" {
                 self.line += 1;
@@ -103,7 +103,7 @@ TemplateToken :: struct {
         return self.s.data[0 .. chars];
     }
 
-    eat_whitespace :: (self: ^TemplateLexer) {
+    eat_whitespace :: (self: &TemplateLexer) {
         while !string.empty(*self.s) {
             switch self.s.data[0] {
                 case #char "\n", #char "\t", #char "\r", #char " " {
@@ -117,7 +117,7 @@ TemplateToken :: struct {
         }
     }
 
-    eat_next_token :: (self: ^TemplateLexer) -> TemplateToken {
+    eat_next_token :: (self: &TemplateLexer) -> TemplateToken {
         tkn: TemplateToken; 
         tkn.line = self.line;
         tkn.col  = self.col;
@@ -131,7 +131,7 @@ TemplateToken :: struct {
 
         token_match("{{") {
             if self.inside_command {
-                self.error = .Nested_Command;
+                self.error = .{ Nested_Command = .{} };
                 yield_token(.Error);
             }
 
@@ -149,7 +149,7 @@ TemplateToken :: struct {
 
         token_match("{%") {
             if self.inside_expression {
-                self.error = .Nested_Command;
+                self.error = .{ Nested_Command = .{} };
                 yield_token(.Error);
             }
 
@@ -261,14 +261,14 @@ TemplateToken :: struct {
 }
 
 #overload
-delete :: (tl: ^TemplateLexer) {
-    delete(^tl.token_buffer);
+delete :: (tl: &TemplateLexer) {
+    delete(&tl.token_buffer);
 }
 
 #overload
-iter.as_iter :: (tl: ^TemplateLexer) => {
+iter.as_iter :: (tl: &TemplateLexer) => {
     return iter.generator(
-        ^.{ tl = tl, hit_error = false },
+        &.{ tl = tl, hit_error = false },
         
         (ctx) => {
             if !ctx.hit_error {
@@ -288,28 +288,28 @@ iter.as_iter :: (tl: ^TemplateLexer) => {
 
 #package
 TemplateParser :: struct {
-    t: ^Template;
-    l: ^TemplateLexer;
+    t: &Template;
+    l: &TemplateLexer;
 
-    instruction_targets: [..] ^[..] ^TNode;
+    instruction_targets: [..] &[..] &TNode;
 }
 
 #package
-parse_template :: (t: ^Template, s: ^str) -> ParseError {
+parse_template :: (t: &Template, s: &str) -> ParseError {
     l := TemplateLexer.{s};
-    p := TemplateParser.{t, ^l};
-    p.instruction_targets << ^t.instructions;
-    defer delete(^p.instruction_targets);
+    p := TemplateParser.{t, &l};
+    p.instruction_targets << &t.instructions;
+    defer delete(&p.instruction_targets);
 
-    return parse_statements(^p);
+    return parse_statements(&p);
 }
 
 #local
-parse_statements :: (use p: ^TemplateParser) -> ParseError {
+parse_statements :: (use p: &TemplateParser) -> ParseError {
     while !p.l.hit_eof {
         switch tkn := p.l->consume(); tkn.type {
             case .Command_Start {
-                if err := parse_statement(p); err != .None {
+                if err := parse_statement(p); err.tag != .None {
                     return err;
                 }
 
@@ -317,7 +317,7 @@ parse_statements :: (use p: ^TemplateParser) -> ParseError {
             }
 
             case .Expression_Start {
-                if node, err := parse_expression(p); err != .None {
+                if node, err := parse_expression(p); err.tag != .None {
                     return err;
                 } else {
                     *array.get(instruction_targets, -1) << node;
@@ -327,43 +327,46 @@ parse_statements :: (use p: ^TemplateParser) -> ParseError {
             }
 
             case .Text {
-                text_node := make_node(t, TNodeText);
-                text_node.text = string.alloc_copy(tkn.text, as_allocator(^t.node_storage));
+                text_node := make_node(t, .{
+                    Text = string.alloc_copy(tkn.text, as_allocator(&t.node_storage))
+                });
                 *array.get(instruction_targets, -1) << text_node;
             }
         }
     }
 
-    return .None;
+    return .{ None = .{} };
 }
 
 #local
-parse_statement :: (use p: ^TemplateParser) -> ParseError {
+parse_statement :: (use p: &TemplateParser) -> ParseError {
     switch tkn := p.l->consume(); tkn.type {
         case .Keyword_Extends {
             text, err := parse_string(p);
-            if err != .None do return err;
+            if err.tag != .None do return err;
 
-            extend_node := make_node(t, TNodeExtend);
-            extend_node.template_name = text;
+            extend_node := make_node(t, TNode.{
+                Extend = text
+            });
 
             *array.get(instruction_targets, -1) << extend_node;
         }
 
         case .Keyword_Block {
             text, err := parse_string(p);
-            if err != .None do return err;
+            if err.tag != .None do return err;
 
-            block_node := make_node(t, TNodeBlock);
-            block_node.block_name = text;
+            block_node := make_node(t, .{
+                Block = .{ block_name = text }
+            });
 
             *array.get(instruction_targets, -1) << block_node;
 
-            instruction_targets << ^block_node.contents;
+            instruction_targets << &union_as_ptr(block_node, .Block).contents;
         }
 
         case .Keyword_EndBlock {
-            array.pop(^instruction_targets);
+            array.pop(&instruction_targets);
         }
 
         case .Keyword_Foreach {
@@ -376,70 +379,73 @@ parse_statement :: (use p: ^TemplateParser) -> ParseError {
             expect_token(p, .Variable, #(iter_tkn));
 
             var_expr := do {
-                name := string.alloc_copy(iter_tkn.text, as_allocator(^t.node_storage));
+                name := string.alloc_copy(iter_tkn.text, as_allocator(&t.node_storage));
 
-                var_expr := make_expr(t, TExprVar);
-                var_expr.var_name = name;
-
+                var_expr := make_node(t, .{ ExprVar = .{ var_name = name } });
                 return var_expr;
             };
 
-            for_node := make_node(t, TNodeForeach);
-            for_node.var_name = string.alloc_copy(var_tkn.text, as_allocator(^t.node_storage));
-            for_node.list = var_expr;
+            for_node := make_node(t, .{
+                Foreach = .{
+                    var_name = string.alloc_copy(var_tkn.text, as_allocator(&t.node_storage)),
+                    list = var_expr,
+                }
+            });
 
             *array.get(instruction_targets, -1) << for_node;
-            instruction_targets << ^for_node.body;
+            instruction_targets << &union_as_ptr(for_node, .Foreach).body;
         }
 
         case .Keyword_EndForeach {
-            array.pop(^instruction_targets);
+            array.pop(&instruction_targets);
         }
     }
 
-    return .None;
+    return .{ None = .{} };
 }
 
 #local
-parse_expression :: (use p: ^TemplateParser) -> (^TExpr, ParseError) {
-    retval: ^TExpr = null;
-    err := ParseError.None;
+parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
+    retval: &TNode = null;
+    err := ParseError.{ None = .{} };
 
     switch tkn := p.l->consume(); tkn.type {
         case .Keyword_Block {
             name, err := parse_string(p);
-            if err != .None do return null, err;
+            if err.tag != .None do return null, err;
 
-            block_expr := make_expr(t, TExprBlock);
-            block_expr.block_name = name;
-
-            retval = block_expr;
+            retval := make_node(t, .{
+                ExprBlock = .{ block_name = name }
+            });
         }
 
         case .Keyword_Partial {
             name, err := parse_string(p);
-            if err != .None do return null, err;
+            if err.tag != .None do return null, err;
 
-            partial_expr := make_expr(t, TExprPartial);
-            partial_expr.partial_name = name;
-
-            array.init(^partial_expr.arguments, 1, allocator=as_allocator(^t.node_storage));
+            args: [..] &TNode;
+            array.init(&args, 1, allocator=as_allocator(&t.node_storage));
 
             while (p.l->peek()).type != .Expression_End {
                 expr, err := parse_expression(p);
-                if err != .None do return null, err;
+                if err.tag != .None do return null, err;
 
-                partial_expr.arguments << expr;
+                args << expr;
             }
+
+            partial_expr := make_node(t, .{
+                ExprPartial = .{ name, args }
+            });
 
             retval = partial_expr;
         }
 
         case .Variable {
-            name := tkn.text |> string.alloc_copy(as_allocator(^t.node_storage));
+            name := tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
 
-            var_expr := make_expr(t, TExprVar);
-            var_expr.var_name = name;
+            var_expr := make_node(t, .{
+                ExprVar = .{ var_name = name }
+            });
 
             retval = var_expr;
         }
@@ -447,31 +453,35 @@ parse_expression :: (use p: ^TemplateParser) -> (^TExpr, ParseError) {
         case .Int_Literal {
             value: i32 = ~~ conv.str_to_i64(tkn.text);
 
-            int_expr := make_expr(t, TExprInt);
-            int_expr.val = value;
+            int_expr := make_node(t, .{
+                ExprInt = .{ val = value }
+            });
 
             retval = int_expr;
         }
-    }
 
-    if retval == null {
-        err = .Unexpected_Token;
+        case #default {
+            err = .{ Unexpected_Token = tkn };
+        }
     }
 
     while true do switch tkn := p.l->peek(); tkn.type {
         case .Dot {
             p.l->consume();
 
-            if (p.l->peek()).type != .Symbol {
-                err = .Unexpected_Token;
+            if tkn := p.l->peek(); tkn.type != .Symbol {
+                err = .{ Unexpected_Token = tkn };
                 break break;
             }
 
             sym_tkn := p.l->consume();
 
-            select_expr := make_expr(t, TExprSelector);
-            select_expr.var = retval;
-            select_expr.field = sym_tkn.text |> string.alloc_copy(as_allocator(^t.node_storage));
+            select_expr := make_node(t, .{
+                ExprSelector = .{
+                    var = retval,
+                    field = sym_tkn.text |> string.alloc_copy(as_allocator(&t.node_storage)),
+                }
+            });
 
             retval = select_expr;
         }
@@ -480,16 +490,16 @@ parse_expression :: (use p: ^TemplateParser) -> (^TExpr, ParseError) {
             p.l->consume();
 
             expr, err~ := parse_expression(p);
-            if err != .None do break break;
+            if err.tag != .None do break break;
 
-            subscript_expr := make_expr(t, TExprSubscript);
-            subscript_expr.var = retval;
-            subscript_expr.sub = expr;
+            subscript_expr := make_node(t, .{
+                ExprSubscript = .{ var = retval, sub = expr }
+            });
 
             retval = subscript_expr;
 
-            if (p.l->peek()).type != .Close_Bracket {
-                err = .Unexpected_Token;
+            if tkn := p.l->peek(); tkn.type != .Close_Bracket {
+                err = .{ Unexpected_Token = .{} };
                 break break;
             }
 
@@ -503,34 +513,51 @@ parse_expression :: (use p: ^TemplateParser) -> (^TExpr, ParseError) {
 }
 
 #local
-parse_string :: (use p: ^TemplateParser) -> (str, ParseError) {
+parse_string :: (use p: &TemplateParser) -> (str, ParseError) {
     str_tkn := p.l->consume();
     if str_tkn.type != .String_Literal {
-        return "", .Unexpected_Token;
+        return "", .{ Unexpected_Token = str_tkn };
     }
 
-    value := str_tkn.text |> string.alloc_copy(as_allocator(^t.node_storage));
+    value := str_tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
 
-    return value, .None;
+    return value, .{ None = .{} };
 }
 
 #local
 expect_token :: #match #local {}
 
 #overload
-expect_token :: macro (p: ^TemplateParser, type: TemplateToken.Type, out: Code) {
+expect_token :: macro (p: &TemplateParser, type: TemplateToken.Type, out: Code) {
     if (p.l->peek()).type != type {
-        return ParseError.Expected_Token;
+        return ParseError.{ Expected_Token = type };
     }
 
     (#unquote out) = p.l->consume();
 }
 
 #overload
-expect_token :: macro (p: ^TemplateParser, type: TemplateToken.Type) {
+expect_token :: macro (p: &TemplateParser, type: TemplateToken.Type) {
     if (p.l->peek()).type != type {
-        return ParseError.Expected_Token;
+        return ParseError.{ Expected_Token = type };
     }
 
     p.l->consume();
+}
+
+
+#package
+make_node :: macro (t: &Template, v: TNode) -> &TNode {
+    r := new(TNode, allocator=as_allocator(&t.node_storage));
+    *r = v;
+    return r;
+}
+
+#package
+union_as_ptr :: macro (u: & $U, variant: U.tag_enum) => {
+    switch u {
+        case variant => &v do return v;
+    }
+
+    return null;
 }

@@ -11,43 +11,38 @@ use core.misc {
 
 #package
 TemplateRenderer :: struct {
-    t: ^Template;
-    w: ^io.Writer;
-    reg: ^TemplateRegistry;
+    t: &Template;
+    w: &io.Writer;
+    reg: &TemplateRegistry;
 
-    scope: ^TemplateScope;
-    blocks: Map(str, ^TNodeBlock);
+    scope: &TemplateScope;
+    blocks: Map(str, &TNode);
 
     error: str;
 }
 
 #package
-render_template :: (use r: ^TemplateRenderer) -> Error {
+render_template :: (use r: &TemplateRenderer) -> Error {
     return render_instructions(r, t.instructions);
 }
 
 #local
-render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error {
+render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error {
     for instrs {
-        switch it.type {
-            case TNodeText {
-                text := cast(^TNodeText) it;
-                io.write_str(w, text.text);
-            }    
+        switch it {
+            case .Text => text do io.write_str(w, text);
 
-            case TNodeBlock {
-                block := cast(^TNodeBlock) it;
+            case .Block => &block {
                 if blocks->has(block.block_name) {
                     error = tprintf("Block '{}' defined multiple times.");
                     return .Render_Error;
                 }
 
-                blocks[block.block_name] = block;
+                blocks[block.block_name] = it;
             }
 
-            case TNodeExtend {
-                extend := cast(^TNodeExtend) it;
-                template := reg->get_template(extend.template_name);
+            case .Extend => template_name {
+                template := reg->get_template(template_name);
                 if template == null {
                     error = tprintf("Template '{}' not found.");
                     return .Render_Error;
@@ -58,15 +53,21 @@ render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error 
                 }
             }
 
-            case TNodeForeach {
+            case .Foreach => &for_node {
                 // :Temporary :TemplateVariables
-                for_node := cast(^TNodeForeach) it;
-                var := cast(^TExprVar) for_node.list;
-                if !(scope->has(var.var_name)) {
+                var := for_node.list;
+                if var.tag != .ExprVar {
+                    error = tprintf("Expected variable as for-iterator.");
+                    return .Render_Error;
+                }
+
+                var_name := union_as_ptr(var, .ExprVar).var_name;
+
+                if !(scope->has(var_name)) {
                     continue;
                 }
 
-                for any_iter(scope->get(var.var_name)) {
+                for any_iter(scope->get(var_name)) {
                     scope->put(for_node.var_name, it);
 
                     if err := render_instructions(r, for_node.body); err != .None {
@@ -77,21 +78,17 @@ render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error 
                 scope->delete(for_node.var_name);
             }
 
-
-
-            case TExprBlock {
-                block := cast(^TExprBlock) it;
+            case .ExprBlock => &block {
                 if !(blocks->has(block.block_name)) {
                     continue;
                 }
 
-                if err := render_instructions(r, blocks[block.block_name].contents); err != .None {
+                if err := render_instructions(r, union_as_ptr(blocks[block.block_name], .Block).contents); err != .None {
                     return err;
                 }
             }
 
-            case TExprPartial {
-                partial := cast(^TExprPartial) it;
+            case .ExprPartial => &partial {
                 template := reg->get_template(partial.partial_name);
                 if !template {
                     continue;
@@ -113,15 +110,15 @@ render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error 
                 }
             }
 
-            case TExprVar, TExprSelector, TExprSubscript {
-                var := resolve_expr_to_any(r, cast(^TExpr) it);
-                if !var.data do continue;
+            case .ExprVar, .ExprSelector, .ExprSubscript {
+                var := resolve_expr_to_any(r, cast(&TNode) it);
+                if !var do continue;
 
-                io.write_format_va(w, "{}", .[var]);
+                io.write_format_va(w, "{}", .[var->unwrap()]);
             }
 
             case #default {
-                error = tprintf("Unhandled node type '{}'", it.type);
+                error = tprintf("Unhandled node type '{}'", it.tag);
                 return .Render_Error;
             }
         }
@@ -131,48 +128,39 @@ render_instructions :: (use r: ^TemplateRenderer, instrs: [..] ^TNode) -> Error 
 }
 
 #local
-resolve_expr_to_any :: (use r: ^TemplateRenderer, expr: ^TExpr) -> any {
-    switch expr.type {
-        case TExprVar {
-            var := cast(^TExprVar) expr;
+resolve_expr_to_any :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
+    switch expr {
+        case .ExprVar => &var {
             // :ErrorHandling if variable does not exist
-            return scope->get(var.var_name);
+            return scope->get_opt(var.var_name);
         }
 
-        case TExprSelector {
-            selector := cast(^TExprSelector) expr;
-
+        case .ExprSelector => &selector {
             sub_any := resolve_expr_to_any(r, selector.var);
-            sub_any  = any_dereference(sub_any);
-            return any_selector(sub_any, selector.field);
+            return sub_any->transform(x => any_dereference(x))
+                          ->transform((x, [selector]) => any_selector(x, selector.field));
         }
 
-        case TExprSubscript {
-            subscript := cast(^TExprSubscript) expr;
-
-            sub_any := resolve_expr_to_any(r, subscript.var);
-            sub := any_to_int(resolve_expr_to_any(r, subscript.sub));
-            if !sub {
-                return .{ null, void };
+        case .ExprSubscript => &subscript {
+            sub_any := resolve_expr_to_any(r, subscript.var)?;
+            sub := resolve_expr_to_any(r, subscript.sub)
+                 ->and_then(any_to_int);
+            switch sub {
+                case .Some => v do return any_subscript(sub_any, ~~ v);
+                case #default do return .{};
             }
-
-            return any_subscript(sub_any, ~~ sub.value);
         }
 
-        case TExprInt {
-            int := cast(^TExprInt) expr;
-
-            return as_any(^int.val);
-        }
+        case .ExprInt => &int do return as_any(&int.val);
     }
 
-    return .{null, void};
+    return .{};
 }
 
 
 #local
 // :StandardLibrary
-any_to_int :: (v: any) -> Optional(i64) {
+any_to_int :: (v: any) -> ? i64 {
     switch v.type {
         C(u32);
         C(i32);
@@ -180,7 +168,7 @@ any_to_int :: (v: any) -> Optional(i64) {
         C(i64);
 
         C :: macro (T: type_expr) {
-            case T do return Optional.make(cast(i64, *cast(^T) v.data));
+            case T do return cast(i64, *cast(&T) v.data);
         }
     }
 

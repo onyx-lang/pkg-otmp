@@ -3,7 +3,7 @@ package otmp
 use core.alloc.arena {Arena}
 
 TemplateRegistry :: struct {
-    templates: Map(str, ^Template);
+    templates: Map(str, &Template);
 
     arena: Arena;
 }
@@ -12,85 +12,44 @@ Template :: struct {
     name: str;
     filepath: str;
 
-    instructions: [..] ^TNode;
+    instructions: [..] &TNode;
 
     node_storage: Arena;
 }
 
-
-TNode :: struct {
-    type: type_expr;
-}
-
-TNodeText :: struct {
-    use node: TNode;
-
-    text: str;     // storage: template.node_storage
-}
-
-TNodeExtend :: struct {
-    use node: TNode;
-
-    template_name: str; // storage: template.node_storage
-}
-
-TNodeBlock :: struct {
-    use node: TNode;
-
-    block_name: str;   // storage: template.node_storage
-    contents: [..] ^TNode;
-}
-
-TNodeForeach :: struct {
-    use node: TNode;
-
-    var_name: str;     // storage: template.node_storage
-    list: ^TExpr;
-    body: [..] ^TNode;
-}
-
-
-TExpr :: struct {
-    use node: TNode;
-}
-
-TExprBlock :: struct {
-    use expr: TExpr;
-    
-    block_name: str; // storage: template.node_storage
-}
-
-TExprPartial :: struct {
-    use expr: TExpr;
-
-    partial_name: str; // storage: template.node_storage
-    arguments: [..] ^TExpr;
-}
-
-TExprVar :: struct {
-    use expr: TExpr;
-
-    var_name: str;   // storage: template.node_storage
-}
-
-TExprSelector :: struct {
-    use expr: TExpr;
-
-    var: ^TExpr;
-    field: str;     // storage: template.node_storage
-}
-
-TExprSubscript :: struct {
-    use expr: TExpr;
-
-    var: ^TExpr;
-    sub: ^TExpr;
-}
-
-TExprInt :: struct {
-    use expr: TExpr;
-
-    val: i32;
+TNode :: union {
+    Text: str;
+    Extend: str;
+    Block: struct {
+        block_name: str;
+        contents: [..] &TNode;
+    };
+    Foreach: struct {
+        var_name: str;
+        list: &TNode;
+        body: [..] &TNode;
+    };
+    ExprBlock: struct {
+        block_name: str;
+    };
+    ExprPartial: struct {
+        partial_name: str;
+        arguments: [..] &TNode;
+    };
+    ExprVar: struct {
+        var_name: str;
+    };
+    ExprSelector: struct {
+        var: &TNode;
+        field: str;
+    };
+    ExprSubscript: struct {
+        var: &TNode;
+        sub: &TNode;
+    };
+    ExprInt: struct {
+        val: i32;
+    };
 }
 
 
@@ -107,13 +66,3 @@ Error :: enum {
 
 TemplateScope :: #type Map(str, any);
 
-
-#package {
-    IsTNode :: interface (t: $T) {
-        { ^t } -> ^TNode;
-    }
-
-    IsTExpr :: interface (t: $T) {
-        { ^t } -> ^TExpr;
-    }
-}

@@ -16,18 +16,18 @@ registry :: () -> TemplateRegistry {
 }
 
 #overload
-delete :: (t: ^TemplateRegistry) {
-    for ^temp: t.templates.entries {
+delete :: (t: &TemplateRegistry) {
+    for &temp: t.templates.entries {
         delete(temp.value);
     }
 
-    delete(^t.templates);
-    arena.free(^t.arena);
+    delete(&t.templates);
+    arena.free(&t.arena);
 }
 
 #inject TemplateRegistry {
-    load_directory :: (self: ^TemplateRegistry, dir: str, extension: str) {
-        recurse :: (self: ^TemplateRegistry, dir, prefix, extension: str) {
+    load_directory :: (self: &TemplateRegistry, dir: str, extension: str) {
+        recurse :: (self: &TemplateRegistry, dir, prefix, extension: str) {
             for os.list_directory(dir) {
                 it_name := it->name();
 
@@ -63,7 +63,7 @@ delete :: (t: ^TemplateRegistry) {
         recurse(self, dir, "", extension);
     }
 
-    load_template :: (self: ^TemplateRegistry, name: str, filename: str) -> Error {
+    load_template :: (self: &TemplateRegistry, name: str, filename: str) -> Error {
         printf("Loading template {} from {}.\n", name, filename);
         if self.templates->has(name) {
             printf("[ERROR] Template '{}' already exists.\n");
@@ -76,15 +76,16 @@ delete :: (t: ^TemplateRegistry) {
 
         contents := os.get_contents(filename);
         stored_contents := contents;
-        defer delete(^stored_contents);
+        defer delete(&stored_contents);
 
-        permanent_name := string.alloc_copy(name, as_allocator(^self.arena));
+        permanent_name := string.alloc_copy(name, as_allocator(&self.arena));
 
-        temp          := template_make(as_allocator(^self.arena));
-        temp.filepath  = filename |> string.alloc_copy(as_allocator(^self.arena));
+        temp          := template_make(as_allocator(&self.arena));
+        temp.filepath  = filename |> string.alloc_copy(as_allocator(&self.arena));
         temp.name      = permanent_name;
 
-        if err := parse_template(temp, ^contents); err != .None {
+        if err := parse_template(temp, &contents); err.tag != .None {
+            log(.Error, "OTMP", tprintf("{}", err));
             return .Template_Parse_Error;
         }
 
@@ -92,33 +93,33 @@ delete :: (t: ^TemplateRegistry) {
         return .None;
     }
 
-    refresh_templates :: (self: ^TemplateRegistry) {
-        for ^temp: self.templates.entries {
-            array.clear(^temp.value.instructions);
-            arena.clear(^temp.value.node_storage);
+    refresh_templates :: (self: &TemplateRegistry) {
+        for &temp: self.templates.entries {
+            array.clear(&temp.value.instructions);
+            arena.clear(&temp.value.node_storage);
 
             contents := os.get_contents(temp.value.filepath);
             stored_contents := contents;
-            defer delete(^stored_contents);
+            defer delete(&stored_contents);
 
-            parse_template(temp.value, ^contents);
+            parse_template(temp.value, &contents);
         }
     }
 
-    get_template :: (self: ^TemplateRegistry, name: str) -> ^Template {
+    get_template :: (self: &TemplateRegistry, name: str) -> &Template {
         return self.templates[name];
     }
 
-    render_template :: (self: ^TemplateRegistry, name: str, output: ^io.Writer, scope: any) -> Error {
+    render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
         temp := self.templates[name];
         if temp == null {
             return .Template_Not_Found;
         }
 
         tscope, _ := core.misc.any_to_map(scope);
-        defer delete(^tscope);
+        defer delete(&tscope);
 
-        return temp->render(self, ^tscope, output);
+        return temp->render(self, &tscope, output);
     }
 }
 
@@ -129,21 +130,21 @@ delete :: (t: ^TemplateRegistry) {
 // Template
 //
 #package
-template_make :: (alloc: Allocator) -> ^Template {
+template_make :: (alloc: Allocator) -> &Template {
     t := new(Template, alloc);
     t.node_storage = arena.make(context.allocator, 64 * 1024);
     return t;
 }
 
 #overload
-delete :: (t: ^Template) {
-    delete(^t.instructions);
-    arena.free(^t.node_storage);
+delete :: (t: &Template) {
+    delete(&t.instructions);
+    arena.free(&t.node_storage);
 }
 
 #inject Template {
-    render :: (self: ^Template, reg: ^TemplateRegistry, scope: ^TemplateScope, output: ^io.Writer) -> Error {
-        r := ^TemplateRenderer.{
+    render :: (self: &Template, reg: &TemplateRegistry, scope: &TemplateScope, output: &io.Writer) -> Error {
+        r := &TemplateRenderer.{
             t = self,
             w = output,
             reg = reg,
@@ -158,20 +159,5 @@ delete :: (t: ^Template) {
 
         return err;
     }
-}
-
-
-#package
-make_node :: macro (t: ^Template, $T: type_expr) -> ^T where IsTNode(T) {
-    r := new(T, allocator=as_allocator(^t.node_storage));
-    r.type = T;
-    return r;
-}
-
-#package
-make_expr :: macro (t: ^Template, $T: type_expr) -> ^T where IsTExpr(T) {
-    r := new(T, allocator=as_allocator(^t.node_storage));
-    r.type = T;
-    return r;
 }
 
