@@ -154,9 +154,9 @@ resolve_expr_to_any :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
         }
 
         case .ExprInt => &int do return as_any(&int.val);
-    }
 
-    return .{};
+        case #default do return .{};
+    }
 }
 
 
