@@ -371,12 +371,12 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
 
         case .Keyword_Foreach {
             var_tkn: TemplateToken;
-            expect_token(p, .Variable, #(var_tkn));
+            expect_token(p, .Variable, [](var_tkn));
 
             expect_token(p, .Keyword_In);
 
             iter_tkn: TemplateToken;
-            expect_token(p, .Variable, #(iter_tkn));
+            expect_token(p, .Variable, [](iter_tkn));
 
             var_expr := do {
                 name := string.alloc_copy(iter_tkn.text, as_allocator(&t.node_storage));
