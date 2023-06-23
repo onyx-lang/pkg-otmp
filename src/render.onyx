@@ -63,19 +63,17 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
 
                 var_name := union_as_ptr(var, .ExprVar).var_name;
 
-                if !(scope->has(var_name)) {
-                    continue;
-                }
+                scope->get(var_name)->with([var] {
+                    for any_iter(var) {
+                        scope->put(for_node.var_name, it);
 
-                for any_iter(scope->get(var_name)) {
-                    scope->put(for_node.var_name, it);
-
-                    if err := render_instructions(r, for_node.body); err != .None {
-                        return err;
+                        if err := render_instructions(r, for_node.body); err != .None {
+                            return err;
+                        }
                     }
-                }
 
-                scope->delete(for_node.var_name);
+                    scope->delete(for_node.var_name);
+                });
             }
 
             case .ExprBlock => &block {
