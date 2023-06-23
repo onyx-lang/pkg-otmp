@@ -79,13 +79,11 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             }
 
             case .ExprBlock => &block {
-                if !(blocks->has(block.block_name)) {
-                    continue;
-                }
-
-                if err := render_instructions(r, union_as_ptr(blocks[block.block_name], .Block).contents); err != .None {
-                    return err;
-                }
+                blocks->get(block.block_name)->with([the_block] {
+                    if err := render_instructions(r, union_as_ptr(the_block, .Block).contents); err != .None {
+                        return err;
+                    }
+                });
             }
 
             case .ExprPartial => &partial {
@@ -102,7 +100,10 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     // map is only used within this function, so long as the temporary
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
-                    scope->put(tprintf("{}", it.index), resolve_expr_to_any(r, it.value));
+                    val := resolve_expr_to_any(r, it.value);
+                    if val {
+                        scope->put(tprintf("{}", it.index), val->unwrap());
+                    }
                 }
 
                 if err := render_instructions(r, template.instructions); err != .None {
@@ -154,6 +155,8 @@ resolve_expr_to_any :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
         }
 
         case .ExprInt => &int do return as_any(&int.val);
+
+        case .ExprString => &string do return as_any(&string.val);
 
         case #default do return .{};
     }

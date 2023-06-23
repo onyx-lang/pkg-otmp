@@ -460,6 +460,16 @@ parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
             retval = int_expr;
         }
 
+        case .String_Literal {
+            value := tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
+
+            str_expr := make_node(t, .{
+                ExprString = .{ val = value }
+            });
+
+            retval = str_expr;
+        }
+
         case #default {
             err = .{ Unexpected_Token = tkn };
         }

@@ -50,6 +50,9 @@ TNode :: union {
     ExprInt: struct {
         val: i32;
     };
+    ExprString: struct {
+        val: str;
+    };
 }
 
 

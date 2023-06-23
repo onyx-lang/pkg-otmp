@@ -107,11 +107,11 @@ delete :: (t: &TemplateRegistry) {
     }
 
     get_template :: (self: &TemplateRegistry, name: str) -> &Template {
-        return self.templates[name];
+        return self.templates[name] ?? null;
     }
 
     render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
-        temp := self.templates[name];
+        temp := self.templates[name] ?? null;
         if temp == null {
             return .Template_Not_Found;
         }
