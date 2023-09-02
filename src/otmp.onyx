@@ -110,16 +110,24 @@ delete :: (t: &TemplateRegistry) {
         return self.templates[name] ?? null;
     }
 
-    render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
+    render_template :: #match #local {}
+
+    #overload
+    TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: &Map(str, any)) -> Error {
         temp := self.templates[name] ?? null;
         if temp == null {
             return .Template_Not_Found;
         }
 
-        tscope, _ := core.misc.any_to_map(scope);
+        return temp->render(self, scope, output);
+    }
+
+    #overload
+    TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
+        tscope := core.misc.any_to_map(scope)->or_return(Error.Render_Error);
         defer delete(&tscope);
 
-        return temp->render(self, &tscope, output);
+        return self->render_template(name, output, &tscope);
     }
 }
 
