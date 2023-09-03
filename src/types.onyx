@@ -58,6 +58,9 @@ TNode :: union {
     ExprString: struct {
         val: str;
     };
+    ExprBool: struct {
+        val: bool;
+    };
     ExprBinOp: struct {
         left: &TNode;
         right: &TNode;

@@ -173,6 +173,9 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
         // "asdf"
         case .ExprString => &string do return as_any(&string.val);
 
+        // true or false
+        case .ExprBool => &bowl do return as_any(&bowl.val);
+
         // a + b
         case .ExprBinOp do return evaluate_binop(r, expr);
 

@@ -50,6 +50,8 @@ TemplateToken :: struct {
         Keyword_Partial;
         Keyword_If;
         Keyword_EndIf;
+        Keyword_True;
+        Keyword_False;
 
         String_Literal;
         Int_Literal;
@@ -174,21 +176,23 @@ TemplateToken :: struct {
         if self.inside_command || self.inside_expression {
             self->eat_whitespace();
 
-            token_consume("block",      .Keyword_Block);            
-            token_consume("endblock",   .Keyword_EndBlock);            
-            token_consume("foreach",    .Keyword_Foreach);            
-            token_consume("endforeach", .Keyword_EndForeach);            
-            token_consume("in",         .Keyword_In);
-            token_consume("extends",    .Keyword_Extends);
-            token_consume("partial",    .Keyword_Partial);
-            token_consume("if",         .Keyword_If);
-            token_consume("endif",      .Keyword_EndIf);
-            token_consume("==",         .Equals);
-            token_consume("!=",         .Not_Equals);
-            token_consume("<=",         .Less_Equals);
-            token_consume(">=",         .Greater_Equals);
-            token_consume("&&",         .And);
-            token_consume("||",         .Or);
+            token_consume("block",      true, .Keyword_Block);            
+            token_consume("endblock",   true, .Keyword_EndBlock);            
+            token_consume("foreach",    true, .Keyword_Foreach);            
+            token_consume("endforeach", true, .Keyword_EndForeach);            
+            token_consume("in",         true, .Keyword_In);
+            token_consume("extends",    true, .Keyword_Extends);
+            token_consume("partial",    true, .Keyword_Partial);
+            token_consume("if",         true, .Keyword_If);
+            token_consume("endif",      true, .Keyword_EndIf);
+            token_consume("true",       true, .Keyword_True);
+            token_consume("false",      true, .Keyword_False);
+            token_consume("==",         false, .Equals);
+            token_consume("!=",         false, .Not_Equals);
+            token_consume("<=",         false, .Less_Equals);
+            token_consume(">=",         false, .Greater_Equals);
+            token_consume("&&",         false, .And);
+            token_consume("||",         false, .Or);
 
             if self.s.data[0] == #char "\"" {
                 // :TODO add escaped strings
@@ -265,10 +269,17 @@ TemplateToken :: struct {
             }
         }
         
-        token_consume :: macro (t: str, kind: TemplateToken.Type) {
+        token_consume :: macro (t: str, is_word: bool, kind: TemplateToken.Type) {
             if string.starts_with(*self.s, t) {
-                tkn.text = self->eat_characters(t.length);
-                yield_token(kind);
+                if is_word {
+                    if self.s.data[t.length]->is_whitespace() {
+                        tkn.text = self->eat_characters(t.length);
+                        yield_token(kind);
+                    }
+                } else {
+                    tkn.text = self->eat_characters(t.length);
+                    yield_token(kind);
+                }
             }
         }
     }
@@ -533,6 +544,14 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
             });
 
             retval = str_expr;
+        }
+
+        case .Keyword_True, .Keyword_False {
+            bool_expr := make_node(t, .{
+                ExprBool = .{ val = tkn.type == .Keyword_True }
+            });
+
+            retval = bool_expr;
         }
 
         case '(' {
