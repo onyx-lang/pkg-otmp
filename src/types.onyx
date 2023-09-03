@@ -29,6 +29,11 @@ TNode :: union {
         list: &TNode;
         body: [..] &TNode;
     };
+    Condition: struct {
+        cond: &TNode;
+        true_block: [..] &TNode;
+        false_block: [..] &TNode;
+    };
     ExprBlock: struct {
         block_name: str;
     };
@@ -53,6 +58,11 @@ TNode :: union {
     ExprString: struct {
         val: str;
     };
+    ExprBinOp: struct {
+        left: &TNode;
+        right: &TNode;
+        op: BinaryOp;
+    };
 }
 
 
@@ -68,4 +78,23 @@ Error :: enum {
 
 
 TemplateScope :: #type Map(str, any);
+
+
+BinaryOp :: enum {
+    Add;
+    Sub;
+    Mul;
+    Div;
+    Mod;
+
+    Eq;
+    Ne;
+    Lt;
+    Le;
+    Gt;
+    Ge;
+
+    And;
+    Or;
+}
 

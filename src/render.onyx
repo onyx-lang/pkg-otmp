@@ -3,6 +3,7 @@ package otmp
 use core {package, io, tprintf, iter, Optional}
 use core.misc {
     as_any,
+    any_as,
     any_iter,
     any_dereference,
     any_selector,
@@ -76,6 +77,19 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 });
             }
 
+            case .Condition => &cond {
+                condition_value := evaluate_expr(r, cond.cond)
+                                    ->transform(any_is_truthy);
+                
+                condition_value->with([truth] {
+                    if truth {
+                        if err := render_instructions(r, cond.true_block); err != .None {
+                            return err;
+                        }
+                    }
+                });
+            }
+
             case .ExprBlock => &block {
                 blocks->get(block.block_name)->with([the_block] {
                     if err := render_instructions(r, union_as_ptr(the_block, .Block).contents); err != .None {
@@ -98,7 +112,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     // map is only used within this function, so long as the temporary
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
-                    val := resolve_expr_to_any(r, it.value);
+                    val := evaluate_expr(r, it.value);
                     if val {
                         scope->put(tprintf("{}", it.index), val->unwrap());
                     }
@@ -109,20 +123,18 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 }
             }
 
-            case .ExprVar, .ExprSelector, .ExprSubscript {
-                var := resolve_expr_to_any(r, cast(&TNode) it);
-                if !var do continue;
+            case #default {
+                value := evaluate_expr(r, cast(&TNode) it);
+                if !value {
+                    if error do return .Render_Error;
+                    continue;
+                }
 
                 // There are weird bugs related to Optional any's (? any), where
                 // the wrong any is returned. Unwrapping as a pointer fixes this
                 // bug.
-                value := var->unwrap_ptr();
-                io.write_format_va(w, "{}", .[*value]);
-            }
-
-            case #default {
-                error = tprintf("Unhandled node type '{}'", it.tag);
-                return .Render_Error;
+                value_ := value->unwrap_ptr();
+                io.write_format_va(w, "{}", .[*value_]);
             }
         }
     }
@@ -131,32 +143,103 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
 }
 
 #local
-resolve_expr_to_any :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
+evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
     switch expr {
+        // foo
         case .ExprVar => &var {
             return scope->get_opt(var.var_name);
         }
 
+        // foo.bar
         case .ExprSelector => &selector {
-            return resolve_expr_to_any(r, selector.var)?
+            return evaluate_expr(r, selector.var)?
                 |> any_dereference()
                 |> any_selector(selector.field);
         }
 
+        // foo[bar]
         case .ExprSubscript => &subscript {
-            sub_any := resolve_expr_to_any(r, subscript.var)?;
-            sub := resolve_expr_to_any(r, subscript.sub)->and_then(any_to_int);
+            sub_any := evaluate_expr(r, subscript.var)?;
+            sub := evaluate_expr(r, subscript.sub)->and_then(any_to_int);
             switch sub {
                 case .Some => v do return any_subscript(sub_any, ~~ v);
                 case #default do return .{};
             }
         }
 
+        // 123
         case .ExprInt => &int do return as_any(&int.val);
 
+        // "asdf"
         case .ExprString => &string do return as_any(&string.val);
 
-        case #default do return .{};
+        // a + b
+        case .ExprBinOp do return evaluate_binop(r, expr);
+
+        case #default {
+            error = tprintf("Unhandled node type '{}'", expr.tag);
+            return .{};
+        }
+    }
+}
+
+#local
+evaluate_binop :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
+    binop := expr.ExprBinOp?;
+
+    left := evaluate_expr(r, binop.left)?;
+    right := evaluate_expr(r, binop.right)?;
+
+    if left.type == str {
+        left_str  := (any_as(left, str)  |> Optional.from_ptr())?;
+        right_str := (any_as(right, str) |> Optional.from_ptr())?;
+
+        switch binop.op {
+            case .Eq do return_value(left_str == right_str);
+            case .Ne do return_value(left_str != right_str);
+            case #default do return .{};
+        }
+    }
+
+    if left.type == bool {
+        left_bool  := (any_as(left, bool)  |> Optional.from_ptr())?;
+        right_bool := (any_as(right, bool) |> Optional.from_ptr())?;
+
+        switch binop.op {
+            case .And do return_value(left_bool && right_bool);
+            case .Or  do return_value(left_bool || right_bool);
+            case .Eq  do return_value(left_bool == right_bool);
+            case .Ne  do return_value(left_bool != right_bool);
+            case #default do return .{};
+        }
+    }
+
+    left_value  := any_to_int(left)?;
+    right_value := any_to_int(right)?;
+
+    switch binop.op {
+        case .Add do return_value(left_value + right_value);
+        case .Sub do return_value(left_value - right_value);
+        case .Mul do return_value(left_value * right_value);
+        case .Div do return_value(left_value / right_value);
+        case .Mod do return_value(left_value % right_value);
+
+        case .Eq do return_value(left_value == right_value);
+        case .Ne do return_value(left_value != right_value);
+        case .Lt do return_value(left_value <  right_value);
+        case .Le do return_value(left_value <= right_value);
+        case .Gt do return_value(left_value >  right_value);
+        case .Ge do return_value(left_value >= right_value);
+    }
+    
+    return .{};
+
+
+    // Helper macro to allocate and return an any from temporary storage.
+    return_value :: macro (x: $T) {
+        result := new_temp(T);
+        *result = x;
+        return .{ Some = as_any(result) };
     }
 }
 
@@ -177,3 +260,15 @@ any_to_int :: (v: any) -> ? i64 {
 
     return .{};
 }
+
+#local
+any_is_truthy :: (v: any) -> bool {
+    any_to_int(v)->with([x] { return x != 0; });
+
+    switch v.type {
+        case bool do return *cast(&bool, v.data);
+        case str  do return (*cast(&str, v.data)).count > 0;
+    }
+}
+
+

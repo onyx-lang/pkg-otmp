@@ -1,7 +1,7 @@
 package otmp
 
 
-use core {package, string, array, iter, conv}
+use core {package, string, array, iter, conv, Result}
 use core.alloc {as_allocator}
 
 ParseError :: union {
@@ -33,7 +33,7 @@ TemplateLexer :: struct {
 
 TemplateToken :: struct {
     Type :: enum {
-        Error;
+        Error :: 256;
         EOF;
 
         Text;   // Raw Text
@@ -48,6 +48,8 @@ TemplateToken :: struct {
         Keyword_In;
         Keyword_Extends;
         Keyword_Partial;
+        Keyword_If;
+        Keyword_EndIf;
 
         String_Literal;
         Int_Literal;
@@ -55,9 +57,13 @@ TemplateToken :: struct {
         Variable;
         Symbol;
 
-        Dot;
-        Open_Bracket;
-        Close_Bracket;
+        Equals;
+        Not_Equals;
+        Less_Equals;
+        Greater_Equals;
+
+        And;
+        Or;
     }
 
     type: Type;
@@ -175,9 +181,14 @@ TemplateToken :: struct {
             token_consume("in",         .Keyword_In);
             token_consume("extends",    .Keyword_Extends);
             token_consume("partial",    .Keyword_Partial);
-            token_consume(".",          .Dot);
-            token_consume("[",          .Open_Bracket);
-            token_consume("]",          .Close_Bracket);
+            token_consume("if",         .Keyword_If);
+            token_consume("endif",      .Keyword_EndIf);
+            token_consume("==",         .Equals);
+            token_consume("!=",         .Not_Equals);
+            token_consume("<=",         .Less_Equals);
+            token_consume(">=",         .Greater_Equals);
+            token_consume("&&",         .And);
+            token_consume("||",         .Or);
 
             if self.s.data[0] == #char "\"" {
                 // :TODO add escaped strings
@@ -227,6 +238,9 @@ TemplateToken :: struct {
 
                 yield_token(.Symbol);
             }
+
+            tkn.text = self->eat_characters(1);
+            yield_token(~~ tkn.text[0]);
 
         } else {
             length := 1;
@@ -317,10 +331,10 @@ parse_statements :: (use p: &TemplateParser) -> ParseError {
             }
 
             case .Expression_Start {
-                if node, err := parse_expression(p); err.tag != .None {
-                    return err;
+                if node := parse_top_expression(p); node->is_err() {
+                    return node->err()->unwrap();
                 } else {
-                    *array.get(instruction_targets, -1) << node;
+                    *array.get(instruction_targets, -1) << node->ok()->unwrap();
                 }
 
                 expect_token(p, .Expression_End);
@@ -399,48 +413,99 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
         case .Keyword_EndForeach {
             array.pop(&instruction_targets);
         }
+
+        case .Keyword_If {
+            cond := parse_expression(p);
+            if cond->is_err() do return cond->err()->unwrap();
+
+            if_node := make_node(t, .{
+                Condition = .{ cond = cond->ok()->unwrap() }
+            });
+
+            *array.get(instruction_targets, -1) << if_node;
+            instruction_targets << &union_as_ptr(if_node, .Condition).true_block;
+        }
+
+        case .Keyword_EndIf {
+            array.pop(&instruction_targets);
+        }
     }
 
     return .{ None = .{} };
 }
 
 #local
-parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
-    retval: &TNode = null;
-    err := ParseError.{ None = .{} };
-
-    switch tkn := p.l->consume(); tkn.type {
+parse_top_expression :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
+    switch tkn := p.l->peek(); tkn.type {
         case .Keyword_Block {
+            p.l->consume();
             name, err := parse_string(p);
-            if err.tag != .None do return null, err;
+            if err.tag != .None do return .{ Err = err };
 
-            retval = make_node(t, .{
-                ExprBlock = .{ block_name = name }
-            });
+            return .{
+                Ok = make_node(t, .{
+                    ExprBlock = .{ block_name = name }
+                })
+            };
         }
 
         case .Keyword_Partial {
+            p.l->consume();
             name, err := parse_string(p);
-            if err.tag != .None do return null, err;
+            if err.tag != .None do return .{ Err = err };
 
             args: [..] &TNode;
             array.init(&args, 1, allocator=as_allocator(&t.node_storage));
 
             while (p.l->peek()).type != .Expression_End {
-                expr, err := parse_expression(p);
-                if err.tag != .None do return null, err;
+                expr := parse_expression(p);
+                if expr.Err do return expr;
 
-                args << expr;
+                args << expr->ok()->unwrap();
             }
 
             partial_expr := make_node(t, .{
                 ExprPartial = .{ name, args }
             });
 
-            retval = partial_expr;
+            return .{ Ok = partial_expr };
         }
+    }
 
-        case .Variable {
+    return parse_expression(p);
+}
+
+#local
+parse_expression :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
+    left := parse_factor(p)?;
+    right: &TNode;
+    root := left;
+
+    while true {
+        op_type := binary_op_from_token(p.l->peek().type);
+        if !op_type do return .{ Ok = root };
+
+        p.l->consume();
+        right := parse_factor(p)?;
+
+        root = make_node(t, .{
+            ExprBinOp = .{
+                left = root,
+                right = right,
+                op = op_type->unwrap()
+            }
+        });
+    }
+
+    return .{ Ok = root };
+}
+
+#local
+parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
+    retval: &TNode = null;
+
+    switch tkn := p.l->consume(); tkn.type {
+        case .Variable, .Symbol {
             name := tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
 
             var_expr := make_node(t, .{
@@ -470,18 +535,26 @@ parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
             retval = str_expr;
         }
 
+        case '(' {
+            defer {
+                if tkn := p.l->consume(); tkn.type != ')' {
+                    return .{ Err = .{ Expected_Token = ')' } };
+                }
+            };
+            retval = parse_expression(p)?;
+        }
+
         case #default {
-            err = .{ Unexpected_Token = tkn };
+            return .{ Err = .{ Unexpected_Token = tkn } };
         }
     }
 
     while true do switch tkn := p.l->peek(); tkn.type {
-        case .Dot {
+        case '.' {
             p.l->consume();
 
             if tkn := p.l->peek(); tkn.type != .Symbol {
-                err = .{ Unexpected_Token = tkn };
-                break break;
+                return .{ Err = .{ Unexpected_Token = tkn } };
             }
 
             sym_tkn := p.l->consume();
@@ -496,21 +569,20 @@ parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
             retval = select_expr;
         }
 
-        case .Open_Bracket {
+        case '[' {
             p.l->consume();
 
-            expr, err~ := parse_expression(p);
-            if err.tag != .None do break break;
+            expr := parse_expression(p);
+            if expr->is_err() do return expr;
 
             subscript_expr := make_node(t, .{
-                ExprSubscript = .{ var = retval, sub = expr }
+                ExprSubscript = .{ var = retval, sub = expr->ok()->unwrap() }
             });
 
             retval = subscript_expr;
 
-            if tkn := p.l->peek(); tkn.type != .Close_Bracket {
-                err = .{ Unexpected_Token = .{} };
-                break break;
+            if tkn := p.l->peek(); tkn.type != ']' {
+                return .{ Err = .{ Unexpected_Token = .{} } };
             }
 
             p.l->consume();
@@ -519,7 +591,7 @@ parse_expression :: (use p: &TemplateParser) -> (&TNode, ParseError) {
         case #default do break break;
     }
 
-    return retval, err;
+    return .{ Ok = retval };
 }
 
 #local
@@ -570,3 +642,25 @@ union_as_ptr :: macro (u: & $U, variant: U.tag_enum) => {
         case #default do return null;
     }
 }
+
+#local
+binary_op_from_token :: (type: TemplateToken.Type) -> ? BinaryOp {
+    switch type {
+        case '+'             do return BinaryOp.Add;
+        case '-'             do return BinaryOp.Sub;
+        case '*'             do return BinaryOp.Mul;
+        case '/'             do return BinaryOp.Div;
+        case '%'             do return BinaryOp.Mod;
+        case .And            do return BinaryOp.And;
+        case .Or             do return BinaryOp.Or;
+        case .Equals         do return BinaryOp.Eq;
+        case .Not_Equals     do return BinaryOp.Ne;
+        case '<'             do return BinaryOp.Lt;
+        case .Less_Equals    do return BinaryOp.Le;
+        case '>'             do return BinaryOp.Gt;
+        case .Greater_Equals do return BinaryOp.Ge;
+    }
+
+    return .{};
+}
+
