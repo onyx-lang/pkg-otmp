@@ -49,6 +49,7 @@ TemplateToken :: struct {
         Keyword_Extends;
         Keyword_Partial;
         Keyword_If;
+        Keyword_Else;
         Keyword_EndIf;
         Keyword_True;
         Keyword_False;
@@ -184,6 +185,7 @@ TemplateToken :: struct {
             token_consume("extends",    true, .Keyword_Extends);
             token_consume("partial",    true, .Keyword_Partial);
             token_consume("if",         true, .Keyword_If);
+            token_consume("else",       true, .Keyword_Else);
             token_consume("endif",      true, .Keyword_EndIf);
             token_consume("true",       true, .Keyword_True);
             token_consume("false",      true, .Keyword_False);
@@ -435,6 +437,14 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
 
             *array.get(instruction_targets, -1) << if_node;
             instruction_targets << &union_as_ptr(if_node, .Condition).true_block;
+        }
+
+        case .Keyword_Else {
+            array.pop(&instruction_targets);
+            if_node := array.get(*array.get(instruction_targets, -1), -1);
+            assert(if_node.tag == .Condition, "Expected a Condition node.");
+
+            instruction_targets << &union_as_ptr(if_node, .Condition).false_block;
         }
 
         case .Keyword_EndIf {

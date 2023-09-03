@@ -86,6 +86,10 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                         if err := render_instructions(r, cond.true_block); err != .None {
                             return err;
                         }
+                    } else {
+                        if err := render_instructions(r, cond.false_block); err != .None {
+                            return err;
+                        }
                     }
                 });
             }
