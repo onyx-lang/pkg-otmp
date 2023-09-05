@@ -402,20 +402,13 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
 
             expect_token(p, .Keyword_In);
 
-            iter_tkn: TemplateToken;
-            expect_token(p, .Variable, [](iter_tkn));
-
-            var_expr := do {
-                name := string.alloc_copy(iter_tkn.text, as_allocator(&t.node_storage));
-
-                var_expr := make_node(t, .{ ExprVar = .{ var_name = name } });
-                return var_expr;
-            };
+            list := parse_expression(p);
+            if list.Err do return list->err()->unwrap();
 
             for_node := make_node(t, .{
                 Foreach = .{
                     var_name = string.alloc_copy(var_tkn.text, as_allocator(&t.node_storage)),
-                    list = var_expr,
+                    list = list->unwrap(),
                 }
             });
 

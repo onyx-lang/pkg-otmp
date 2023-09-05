@@ -55,17 +55,8 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             }
 
             case .Foreach => &for_node {
-                // :Temporary :TemplateVariables
-                var := for_node.list;
-                if var.tag != .ExprVar {
-                    error = tprintf("Expected variable as for-iterator.");
-                    return .Render_Error;
-                }
-
-                var_name := union_as_ptr(var, .ExprVar).var_name;
-
-                scope->get(var_name)->with([var] {
-                    for any_iter(var) {
+                evaluate_expr(r, for_node.list)->with([list] {
+                    for any_iter(list) {
                         scope->put(for_node.var_name, it);
 
                         if err := render_instructions(r, for_node.body); err != .None {

@@ -8,7 +8,7 @@ main :: () {
     registry := otmp.registry();
     registry->load_directory("./templates", ".html");
 
-    registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68 });
+    registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] } });
     io.stream_flush(^stdio.stream);
 }
 
