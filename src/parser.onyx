@@ -130,9 +130,11 @@ TemplateToken :: struct {
         tkn: TemplateToken; 
         tkn.line = self.line;
         tkn.col  = self.col;
-        
-        self->eat_whitespace();
 
+        if self.inside_command || self.inside_expression {
+            self->eat_whitespace();
+        }
+        
         if string.empty(*self.s) {
             self.hit_eof = true;
             yield_token(.EOF);
@@ -175,8 +177,6 @@ TemplateToken :: struct {
         }
 
         if self.inside_command || self.inside_expression {
-            self->eat_whitespace();
-
             token_consume("block",      true, .Keyword_Block);            
             token_consume("endblock",   true, .Keyword_EndBlock);            
             token_consume("foreach",    true, .Keyword_Foreach);            
