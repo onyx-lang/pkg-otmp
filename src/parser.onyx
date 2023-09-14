@@ -12,6 +12,8 @@ ParseError :: union {
     Nested_Command: TemplateToken;
 
     Cannot_Nest_Blocks: TemplateToken;
+
+    Error: str;
 }
 
 
@@ -53,6 +55,7 @@ TemplateToken :: struct {
         Keyword_EndIf;
         Keyword_True;
         Keyword_False;
+        Keyword_Let;
 
         String_Literal;
         Int_Literal;
@@ -189,6 +192,7 @@ TemplateToken :: struct {
             token_consume("endif",      true, .Keyword_EndIf);
             token_consume("true",       true, .Keyword_True);
             token_consume("false",      true, .Keyword_False);
+            token_consume("let",        true, .Keyword_Let);
             token_consume("==",         false, .Equals);
             token_consume("!=",         false, .Not_Equals);
             token_consume("<=",         false, .Less_Equals);
@@ -442,6 +446,29 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
 
         case .Keyword_EndIf {
             array.pop(&instruction_targets);
+        }
+
+        case .Keyword_Let {
+            var_node := parse_expression(p);
+            if var_node->is_err() do return var_node->err()->unwrap();
+
+            var := var_node->ok()->unwrap().ExprVar;
+            if !var do return .{
+                Error = "Expected variable after 'let'."
+            };
+
+            expect_token(p, '=');
+            value := parse_expression(p);
+            if value->is_err() do return value->err()->unwrap();
+
+            let_node := make_node(t, .{
+                Let = .{
+                    var->unwrap().var_name,
+                    value->ok()->unwrap()
+                }
+            });
+
+            *array.get(instruction_targets, -1) << let_node;
         }
     }
 

@@ -34,6 +34,10 @@ TNode :: union {
         true_block: [..] &TNode;
         false_block: [..] &TNode;
     };
+    Let: struct {
+        var_name: str;
+        value: &TNode;
+    };
     ExprBlock: struct {
         block_name: str;
     };

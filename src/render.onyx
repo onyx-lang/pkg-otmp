@@ -77,11 +77,17 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                         if err := render_instructions(r, cond.true_block); err != .None {
                             return err;
                         }
-                    } else {
+                    } elseif cond.false_block {
                         if err := render_instructions(r, cond.false_block); err != .None {
                             return err;
                         }
                     }
+                });
+            }
+
+            case .Let => &let {
+                evaluate_expr(r, let.value)->with([value] {
+                    scope->put(let.var_name, value);
                 });
             }
 

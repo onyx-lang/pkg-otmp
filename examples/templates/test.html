@@ -9,6 +9,13 @@
 
     <body>
         {% partial "partials/example_partial" %}
+
+        {{ if 5 < 10 }}
+            {{ let foo = 12 + 43 }}
+        {{ else }}
+            {{ let foo = 0 }}
+        {{ endif }}
+        foo is {% foo %}
     </body>
 
 </html>
