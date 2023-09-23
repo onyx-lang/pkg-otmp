@@ -278,7 +278,7 @@ TemplateToken :: struct {
         token_consume :: macro (t: str, is_word: bool, kind: TemplateToken.Type) {
             if string.starts_with(*self.s, t) {
                 if is_word {
-                    if self.s.data[t.length]->is_whitespace() {
+                    if !self.s.data[t.length]->is_alphanum() {
                         tkn.text = self->eat_characters(t.length);
                         yield_token(kind);
                     }
