@@ -686,30 +686,30 @@ make_node :: macro (t: &Template, v: TNode) -> &TNode {
 
 #package
 union_as_ptr :: macro (u: & $U, variant: U.tag_enum) => {
-    switch u {
-        case variant => &v do return v;
-        case #default do return null;
-    }
+    return switch u {
+        case &v: variant => v;
+        case #default => null;
+    };
 }
 
 #local
 binary_op_from_token :: (type: TemplateToken.Type) -> ? BinaryOp {
-    switch type {
-        case '+'             do return BinaryOp.Add;
-        case '-'             do return BinaryOp.Sub;
-        case '*'             do return BinaryOp.Mul;
-        case '/'             do return BinaryOp.Div;
-        case '%'             do return BinaryOp.Mod;
-        case .And            do return BinaryOp.And;
-        case .Or             do return BinaryOp.Or;
-        case .Equals         do return BinaryOp.Eq;
-        case .Not_Equals     do return BinaryOp.Ne;
-        case '<'             do return BinaryOp.Lt;
-        case .Less_Equals    do return BinaryOp.Le;
-        case '>'             do return BinaryOp.Gt;
-        case .Greater_Equals do return BinaryOp.Ge;
-    }
+    return switch type {
+        case '+'             => Optional.make(BinaryOp.Add)
+        case '-'             => BinaryOp.Sub
+        case '*'             => BinaryOp.Mul
+        case '/'             => BinaryOp.Div
+        case '%'             => BinaryOp.Mod
+        case .And            => BinaryOp.And
+        case .Or             => BinaryOp.Or
+        case .Equals         => BinaryOp.Eq
+        case .Not_Equals     => BinaryOp.Ne
+        case '<'             => BinaryOp.Lt
+        case .Less_Equals    => BinaryOp.Le
+        case '>'             => BinaryOp.Gt
+        case .Greater_Equals => BinaryOp.Ge
 
-    return .{};
+        case #default => (? BinaryOp).{};
+    };
 }
 
