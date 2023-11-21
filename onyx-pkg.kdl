@@ -1,0 +1,13 @@
+package {
+    name "otmp" 
+    author "Brendan Hansen" 
+    url "git://onyxlang.io/repo/otmp" 
+    description "A string templating language for Onyx." 
+    version "0.0.25" 
+}
+
+config {
+    dependency_source_path "./lib" 
+    dependency_binary_path "./bin" 
+}
+
