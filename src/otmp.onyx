@@ -64,9 +64,9 @@ delete :: (t: &TemplateRegistry) {
     }
 
     load_template :: (self: &TemplateRegistry, name: str, filename: str) -> Error {
-        printf("Loading template {} from {}.\n", name, filename);
+        logf(.Info, "Loading template {} from {}.\n", name, filename);
         if self.templates->has(name) {
-            printf("[ERROR] Template '{}' already exists.\n");
+            logf(.Error, "Template '{}' already exists.\n");
             return .Duplicate_Template;
         }
 
@@ -162,7 +162,7 @@ delete :: (t: &Template) {
         err := render_template(r);
 
         if err != .None {
-            core.printf("Template Error: {}\n", r.error);
+            logf(.Error, "Template Error: {}\n", r.error);
         }
 
         return err;

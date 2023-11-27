@@ -72,17 +72,21 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 condition_value := evaluate_expr(r, cond.cond)
                                     ->transform(any_is_truthy);
                 
+                rendered := false;
                 condition_value->with([truth] {
                     if truth {
+                        rendered = true;
                         if err := render_instructions(r, cond.true_block); err != .None {
-                            return err;
-                        }
-                    } elseif cond.false_block {
-                        if err := render_instructions(r, cond.false_block); err != .None {
                             return err;
                         }
                     }
                 });
+
+                if !rendered {
+                    if err := render_instructions(r, cond.false_block); err != .None {
+                        return err;
+                    }
+                }
             }
 
             case &let: .Let {
