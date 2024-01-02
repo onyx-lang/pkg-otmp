@@ -1,6 +1,6 @@
 package otmp
 
-use core {package, io, tprintf, iter, Optional}
+use core {package, io, tprintf, iter, Optional, conv}
 use core.misc {
     as_any,
     any_as,
@@ -106,10 +106,11 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             case &partial: .ExprPartial {
                 template := reg->get_template(partial.partial_name);
                 if !template {
+                    logf(.Error, "Partial '{}' not found.", partial.partial_name);
                     continue;
                 }
 
-                for iter.as_iter(partial.arguments)
+                for arg: iter.as_iter(partial.arguments)
                     |> iter.enumerate()
                 {
                     // ROBUSTNESS: Normally, allocating to a temporary allocator for
@@ -117,10 +118,9 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     // map is only used within this function, so long as the temporary
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
-                    val := evaluate_expr(r, it.value);
-                    if val {
-                        scope->put(tprintf("{}", it.index), val->unwrap());
-                    }
+                    evaluate_expr(r, arg.value)->with([v] {
+                        scope->put(tprintf("_{}", arg.index), v);
+                    });
                 }
 
                 if err := render_instructions(r, template.instructions); err != .None {
@@ -199,7 +199,16 @@ evaluate_binop :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
     right := evaluate_expr(r, binop.right)?;
 
     if left.type == str {
-        left_str  := (any_as(left, str)  |> Optional.from_ptr())?;
+        left_str := (any_as(left, str)  |> Optional.from_ptr())?;
+        if binop.op == .Add {
+            buf := make_temp(dyn_str);
+            res := conv.format_va(&buf, "{}{}", .[
+                any.{ &left_str,  str},
+                right
+            ]);
+            return_value(res);
+        }
+
         right_str := (any_as(right, str) |> Optional.from_ptr())?;
 
         switch binop.op {

@@ -64,7 +64,7 @@ delete :: (t: &TemplateRegistry) {
     }
 
     load_template :: (self: &TemplateRegistry, name: str, filename: str) -> Error {
-        logf(.Info, "Loading template {} from {}.\n", name, filename);
+        logf(.Info, "Loading template {} from {}.", name, filename);
         if self.templates->has(name) {
             logf(.Error, "Template '{}' already exists.\n");
             return .Duplicate_Template;
@@ -85,7 +85,7 @@ delete :: (t: &TemplateRegistry) {
         temp.name      = permanent_name;
 
         if err := parse_template(temp, &contents); err.tag != .None {
-            log(.Error, "OTMP", tprintf("{}", err));
+            logf(.Error, "OTMP: {!d}", err);
             return .Template_Parse_Error;
         }
 

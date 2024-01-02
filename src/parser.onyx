@@ -237,7 +237,7 @@ TemplateToken :: struct {
                 yield_token(.Int_Literal);
             }
 
-            if self.s.data[0]->is_alphanum() {
+            if self.s.data[0]->is_alphanum() || self.s.data[0] == '_' {
                 chars := 0;
                 while chars < self.s.length &&
                     (self.s.data[chars]->is_alphanum() || self.s.data[chars] == #char "_") {
@@ -402,7 +402,12 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
 
         case .Keyword_Foreach {
             var_tkn: TemplateToken;
-            expect_token(p, .Variable, [](var_tkn));
+            switch p.l->peek().type {
+                case .Variable, .Symbol do var_tkn = p.l->consume();
+                case #default {
+                    return ParseError.{ Expected_Token = .Symbol };
+                }
+            }
 
             expect_token(p, .Keyword_In);
 
