@@ -19,6 +19,8 @@ TemplateRenderer :: struct {
     scope: &TemplateScope;
     blocks: Map(str, &TNode);
 
+    index_variable: &i32;
+
     error: str;
 }
 
@@ -55,6 +57,13 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             }
 
             case &for_node: .Foreach {
+                if !r.index_variable {
+                    r.index_variable = new_temp(i32);
+                }
+
+                *r.index_variable = 0;
+                scope->put("__index", as_any(r.index_variable));
+
                 evaluate_expr(r, for_node.list)->with([list] {
                     for any_iter(list) {
                         scope->put(for_node.var_name, it);
@@ -62,6 +71,8 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                         if err := render_instructions(r, for_node.body); err != .None {
                             return err;
                         }
+
+                        *r.index_variable += 1;
                     }
 
                     scope->delete(for_node.var_name);
