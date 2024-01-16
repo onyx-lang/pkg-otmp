@@ -286,6 +286,23 @@ any_to_int :: (v: any) -> ? i64 {
         }
     }
 
+    if v.type->info().kind == .Enum {
+        switch v.type->info()->as_enum().backing_type {
+            C(u8);
+            C(i8);
+            C(u16);
+            C(i16);
+            C(u32);
+            C(i32);
+            C(u64);
+            C(i64);
+
+            C :: macro (T: type_expr) {
+                case T do return cast(i64, *cast(&T) v.data);
+            }
+        }
+    }
+
     return .{};
 }
 
