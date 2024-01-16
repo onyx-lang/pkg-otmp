@@ -3,7 +3,7 @@ package {
     author "Brendan Hansen" 
     url "git://onyxlang.io/repo/otmp" 
     description "A string templating language for Onyx." 
-    version "0.0.29" 
+    version "0.0.30" 
 }
 
 config {
