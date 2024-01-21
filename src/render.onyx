@@ -37,7 +37,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
 
             case &block: .Block {
                 if blocks->has(block.block_name) {
-                    error = tprintf("Block '{}' defined multiple times.");
+                    error = tprintf("Block '{}' defined multiple times.", block.block_name);
                     return .Render_Error;
                 }
 
