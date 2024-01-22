@@ -16,6 +16,10 @@
             {{ let foo = 0 }}
         {{ endif }}
         foo is {% foo %}
+
+        {{ foreach t in testing("Test string!", 10) }}
+            <p>This is {% t %}</p>
+        {{ endforeach }}
     </body>
 
 </html>

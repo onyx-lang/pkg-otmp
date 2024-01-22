@@ -6,6 +6,8 @@ TemplateRegistry :: struct {
     templates: Map(str, &Template);
 
     arena: Arena;
+
+    functions: Map(str, #type ([] any) -> any);
 }
 
 Template :: struct {
@@ -69,6 +71,10 @@ TNode :: union {
         left: &TNode;
         right: &TNode;
         op: BinaryOp;
+    };
+    ExprCall: struct {
+        func: str;
+        arguments: [..] &TNode;
     };
 }
 

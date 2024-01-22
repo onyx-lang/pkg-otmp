@@ -1,6 +1,6 @@
 package otmp
 
-use core {package, io, tprintf, iter, Optional, conv}
+use core {package, io, tprintf, iter, Optional, conv, array}
 use core.misc {
     as_any,
     any_as,
@@ -194,6 +194,15 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
 
         // a + b
         case .ExprBinOp do return evaluate_binop(r, expr);
+
+        case &call: .ExprCall {
+            args: [..] any;
+            for call.arguments {
+                array.push(&args, evaluate_expr(r, it)?);
+            }
+
+            return reg.functions[call.func]?(args);
+        }
 
         case #default {
             error = tprintf("Unhandled node type '{}'", expr.tag);

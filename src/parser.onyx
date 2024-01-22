@@ -554,6 +554,11 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
         case .Variable, .Symbol {
             name := tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
 
+            if next := p.l->peek(); next.type == '(' {
+                retval = parse_call(p, name)?;
+                break;
+            }
+
             var_expr := make_node(t, .{
                 ExprVar = .{ var_name = name }
             });
@@ -658,6 +663,39 @@ parse_string :: (use p: &TemplateParser) -> (str, ParseError) {
     value := str_tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
 
     return value, .{ None = .{} };
+}
+
+#local
+parse_call :: (use p: &TemplateParser, name: str) -> Result(&TNode, ParseError) {
+    p.l->consume(); // (
+
+    args: [..] &TNode;
+    while true {
+        expr := parse_expression(p)?;
+        args << expr;
+
+        next := p.l->peek().type;
+        if next != ')' {
+            if next != ',' {
+                return .{ Err = ParseError.{Expected_Token = ','} };
+            }
+
+            p.l->consume();
+        } else {
+            break;
+        }
+    }
+
+    p.l->consume(); // )
+
+    return .{ Ok =
+        make_node(t, .{
+            ExprCall = .{
+                func = name,
+                arguments = args
+            }
+        })
+    };
 }
 
 #local

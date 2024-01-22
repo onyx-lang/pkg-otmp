@@ -1,7 +1,7 @@
 package otmp
 
 use core.alloc {as_allocator, arena}
-use core {package, array, io, os, string, tprintf, printf}
+use core {package, array, io, os, string, misc, tprintf, printf}
 
 //
 // Template Registry
@@ -11,6 +11,7 @@ registry :: () -> TemplateRegistry {
     t: TemplateRegistry;
     t.arena = arena.make(context.allocator, 64 * 1024);
     t.templates->init();
+    t.functions->init();
 
     return t;
 }
@@ -166,6 +167,116 @@ delete :: (t: &Template) {
         }
 
         return err;
+    }
+}
+
+
+
+
+
+// Template procedures
+#inject
+TemplateRegistry.define_proc :: #match #local {}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ([] any) -> any) {
+    self.functions[name] = proc;
+}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1) -> $R) {
+    set_temporary_allocator_to_internal_arena(self);
+    self.functions[name] = (args, [proc]) => {
+        res := proc(
+            *misc.any_as(args[0], A1)
+        );
+        
+        return any.{ context.temp_allocator->move(res), R };
+    };
+}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2) -> $R) {
+    set_temporary_allocator_to_internal_arena(self);
+    self.functions[name] = (args, [proc]) => {
+        res := proc(
+            *misc.any_as(args[0], A1),
+            *misc.any_as(args[1], A2)
+        );
+        
+        return any.{ context.temp_allocator->move(res), R };
+    };
+}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3) -> $R) {
+    set_temporary_allocator_to_internal_arena(self);
+    self.functions[name] = (args, [proc]) => {
+        res := proc(
+            *misc.any_as(args[0], A1),
+            *misc.any_as(args[1], A2),
+            *misc.any_as(args[2], A3),
+        );
+        
+        return any.{ context.temp_allocator->move(res), R };
+    };
+}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4) -> $R) {
+    set_temporary_allocator_to_internal_arena(self);
+    self.functions[name] = (args, [proc]) => {
+        res := proc(
+            *misc.any_as(args[0], A1),
+            *misc.any_as(args[1], A2),
+            *misc.any_as(args[2], A3),
+            *misc.any_as(args[3], A4),
+        );
+        
+        return any.{ context.temp_allocator->move(res), R };
+    };
+}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4, $A5) -> $R) {
+    set_temporary_allocator_to_internal_arena(self);
+    self.functions[name] = (args, [proc]) => {
+        res := proc(
+            *misc.any_as(args[0], A1),
+            *misc.any_as(args[1], A2),
+            *misc.any_as(args[2], A3),
+            *misc.any_as(args[3], A4),
+            *misc.any_as(args[4], A5),
+        );
+        
+        return any.{ context.temp_allocator->move(res), R };
+    };
+}
+
+#overload
+TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4, $A5, $A6) -> $R) {
+    set_temporary_allocator_to_internal_arena(self);
+    self.functions[name] = (args, [proc]) => {
+        res := proc(
+            *misc.any_as(args[0], A1),
+            *misc.any_as(args[1], A2),
+            *misc.any_as(args[2], A3),
+            *misc.any_as(args[3], A4),
+            *misc.any_as(args[4], A5),
+            *misc.any_as(args[5], A6),
+        );
+        
+        return any.{ context.temp_allocator->move(res), R };
+    };
+}
+
+#local
+set_temporary_allocator_to_internal_arena :: macro (t: &TemplateRegistry) {
+    old_allocator := context.temp_allocator;
+    context.temp_allocator = as_allocator(&t.arena);
+
+    defer {
+        context.temp_allocator = old_allocator;
     }
 }
 
