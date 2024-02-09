@@ -1,6 +1,6 @@
 package otmp
 
-use core {package, io, tprintf, iter, Optional, conv, array}
+use core {package, io, tprintf, iter, Optional, conv, array, map, alloc}
 use core.misc {
     as_any,
     any_as,
@@ -120,6 +120,15 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     logf(.Error, "Partial '{}' not found.", partial.partial_name);
                     continue;
                 }
+
+                oldScope := scope;
+                defer {
+                    delete(scope);
+                    cfree(scope);
+                    scope = oldScope;
+                }
+
+                scope = map.copy(oldScope) |> alloc.on_heap();
 
                 for arg: iter.as_iter(partial.arguments)
                     |> iter.enumerate()
