@@ -10,7 +10,10 @@ main :: () {
 
     registry->define_proc("testing", (a: str, b: i32) -> [] i32 {
         printf("This works! {} {}\n", a, b);
-        return iter.comp(iter.as_iter(0 .. b), [](it + 1));
+
+        return array.make(.[
+            1, 2, 3, 4
+        ]);
     });
 
 

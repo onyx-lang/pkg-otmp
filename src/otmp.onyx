@@ -18,7 +18,7 @@ registry :: () -> TemplateRegistry {
 
 #overload
 delete :: (t: &TemplateRegistry) {
-    for &temp: t.templates.entries {
+    for &temp in t.templates.entries {
         delete(temp.value);
     }
 
@@ -95,7 +95,7 @@ delete :: (t: &TemplateRegistry) {
     }
 
     refresh_templates :: (self: &TemplateRegistry) {
-        for &temp: self.templates.entries {
+        for &temp in self.templates.entries {
             array.clear(&temp.value.instructions);
             arena.clear(&temp.value.node_storage);
 

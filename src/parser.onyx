@@ -730,7 +730,7 @@ make_node :: macro (t: &Template, v: TNode) -> &TNode {
 #package
 union_as_ptr :: macro (u: & $U, variant: U.tag_enum) => {
     return switch u {
-        case &v: variant => v;
+        case variant as &v => v;
         case #default => null;
     };
 }

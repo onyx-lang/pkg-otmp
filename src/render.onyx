@@ -33,9 +33,9 @@ render_template :: (use r: &TemplateRenderer) -> Error {
 render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error {
     for instrs {
         switch it {
-            case text: .Text do io.write_str(w, text);
+            case .Text as text do io.write_str(w, text);
 
-            case &block: .Block {
+            case .Block as &block {
                 if blocks->has(block.block_name) {
                     error = tprintf("Block '{}' defined multiple times.", block.block_name);
                     return .Render_Error;
@@ -44,7 +44,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 blocks[block.block_name] = it;
             }
 
-            case template_name: .Extend {
+            case .Extend as template_name {
                 template := reg->get_template(template_name);
                 if template == null {
                     error = tprintf("Template '{}' not found.");
@@ -56,7 +56,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 }
             }
 
-            case &for_node: .Foreach {
+            case .Foreach as &for_node {
                 if !r.index_variable {
                     r.index_variable = new_temp(i32);
                 }
@@ -79,7 +79,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 });
             }
 
-            case &cond: .Condition {
+            case .Condition as &cond {
                 condition_value := evaluate_expr(r, cond.cond)
                                     ->transform(any_is_truthy);
                 
@@ -100,13 +100,13 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 }
             }
 
-            case &let: .Let {
+            case .Let as &let {
                 evaluate_expr(r, let.value)->with([value] {
                     scope->put(let.var_name, value);
                 });
             }
 
-            case &block: .ExprBlock {
+            case .ExprBlock as &block {
                 blocks->get(block.block_name)->with([the_block] {
                     if err := render_instructions(r, union_as_ptr(the_block, .Block).contents); err != .None {
                         return err;
@@ -114,7 +114,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 });
             }
 
-            case &partial: .ExprPartial {
+            case .ExprPartial as &partial {
                 template := reg->get_template(partial.partial_name);
                 if !template {
                     logf(.Error, "Partial '{}' not found.", partial.partial_name);
@@ -130,7 +130,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
 
                 scope = map.copy(oldScope) |> alloc.on_heap();
 
-                for arg: iter.as_iter(partial.arguments)
+                for arg in iter.as_iter(partial.arguments)
                     |> iter.enumerate()
                 {
                     // ROBUSTNESS: Normally, allocating to a temporary allocator for
@@ -171,40 +171,40 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
 evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
     switch expr {
         // foo
-        case &var: .ExprVar {
+        case .ExprVar as &var {
             return scope->get_opt(var.var_name);
         }
 
         // foo.bar
-        case &selector: .ExprSelector {
+        case .ExprSelector as &selector {
             return evaluate_expr(r, selector.var)?
                 |> any_dereference()
                 |> any_selector(selector.field);
         }
 
         // foo[bar]
-        case &subscript: .ExprSubscript {
+        case .ExprSubscript as &subscript {
             sub_any := evaluate_expr(r, subscript.var)?;
             sub := evaluate_expr(r, subscript.sub)->and_then(any_to_int);
             return switch sub {
-                case v: .Some => any_subscript(sub_any, ~~ v);
+                case .Some as v => any_subscript(sub_any, ~~ v);
                 case #default => .{};
             };
         }
 
         // 123
-        case &int: .ExprInt do return as_any(&int.val);
+        case .ExprInt as &int do return as_any(&int.val);
 
         // "asdf"
-        case &string: .ExprString do return as_any(&string.val);
+        case .ExprString as &string do return as_any(&string.val);
 
         // true or false
-        case &bowl: .ExprBool do return as_any(&bowl.val);
+        case .ExprBool as &bowl do return as_any(&bowl.val);
 
         // a + b
         case .ExprBinOp do return evaluate_binop(r, expr);
 
-        case &call: .ExprCall {
+        case .ExprCall as &call {
             args: [..] any;
             for call.arguments {
                 array.push(&args, evaluate_expr(r, it)?);
