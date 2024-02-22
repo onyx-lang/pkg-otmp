@@ -215,8 +215,8 @@ TemplateToken :: struct {
                 self->eat_characters(1);
 
                 chars := 0;
-                while chars < self.s.length
-                    && (self.s.data[chars]->is_alphanum() || self.s.data[chars] == '_')
+                while chars < self.s.length &&
+                    (self.s.data[chars]->is_alphanum() || self.s.data[chars] == '_')
                 {
                      chars += 1;
                 }
