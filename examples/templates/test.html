@@ -20,6 +20,10 @@
         {{ foreach t in testing("Test string!", 10) }}
             <p>This is {% t %}</p>
         {{ endforeach }}
+
+        {{ if test_arr }}
+            <p>Arrays are truthy!</p>
+        {{ endif }}
     </body>
 
 </html>

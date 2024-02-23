@@ -333,6 +333,14 @@ any_is_truthy :: (v: any) -> bool {
         case str  do return (*cast(&str, v.data)).count > 0;
     }
 
+    info := v.type->info();
+    if info.kind == .Slice || info.kind == .Dynamic_Array {
+        use core.array {Untyped_Array};
+
+        arr := cast(&Untyped_Array) v.data;
+        return arr.count > 0;
+    }
+
     return false;
 }
 

@@ -17,7 +17,7 @@ main :: () {
     });
 
 
-    registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] } });
+    registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] }, test_arr=cast([] u32) u32.[1] });
     io.stream_flush(^stdio.stream);
 }
 
