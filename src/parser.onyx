@@ -204,7 +204,7 @@ TemplateToken :: struct {
                 // :TODO add escaped strings
                 self->eat_characters(1);
 
-                index := str.index_of(*self.s, "'");
+                index := str.index_of(*self.s, '"');
                 tkn.text = self->eat_characters(index);
                 self->eat_characters(1);
                 
