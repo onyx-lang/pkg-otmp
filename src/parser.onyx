@@ -1,7 +1,7 @@
 package otmp
 
 
-use core {package, string, array, iter, conv, Result}
+use core {package, iter, conv, Result}
 use core.alloc {as_allocator}
 
 ParseError :: union {
@@ -91,9 +91,9 @@ TemplateToken :: struct {
     }
 
     consume :: (self: &TemplateLexer) -> TemplateToken {
-        if !array.empty(self.token_buffer) {
+        if !Array.empty(self.token_buffer) {
             tkn := self.token_buffer[0];
-            array.delete(&self.token_buffer, 0);
+            Array.delete(&self.token_buffer, 0);
             return tkn;
         }
 
@@ -103,7 +103,7 @@ TemplateToken :: struct {
 
     eat_characters :: (self: &TemplateLexer, chars := 1) -> str {
         for chars {
-            if self.s.data[it] == #char "\n" {
+            if self.s.data[it] == '\n' {
                 self.line += 1;
                 self.col   = 0;
             }
@@ -111,18 +111,18 @@ TemplateToken :: struct {
             self.col += 1;
         }
 
-        defer string.advance(self.s, chars);
+        defer str.advance(self.s, chars);
         return self.s.data[0 .. chars];
     }
 
     eat_whitespace :: (self: &TemplateLexer) {
-        while !string.empty(*self.s) {
+        while !str.empty(*self.s) {
             switch self.s.data[0] {
-                case #char "\n", #char "\t", #char "\r", #char " " {
+                case '\n', '\t', '\r', ' ' {
                     self->eat_characters(1);
                 }
 
-                case #default {
+                case _ {
                     break break;
                 }
             }
@@ -138,7 +138,7 @@ TemplateToken :: struct {
             self->eat_whitespace();
         }
         
-        if string.empty(*self.s) {
+        if str.empty(*self.s) {
             self.hit_eof = true;
             yield_token(.EOF);
         }
@@ -200,18 +200,18 @@ TemplateToken :: struct {
             token_consume("&&",         false, .And);
             token_consume("||",         false, .Or);
 
-            if self.s.data[0] == #char "\"" {
+            if self.s.data[0] == '"' {
                 // :TODO add escaped strings
                 self->eat_characters(1);
 
-                index := string.index_of(*self.s, #char "\"");
+                index := str.index_of(*self.s, "'");
                 tkn.text = self->eat_characters(index);
                 self->eat_characters(1);
                 
                 yield_token(.String_Literal);
             }
 
-            if self.s.data[0] == #char "$" {
+            if self.s.data[0] == '$' {
                 self->eat_characters(1);
 
                 chars := 0;
@@ -240,7 +240,7 @@ TemplateToken :: struct {
             if self.s.data[0]->is_alphanum() || self.s.data[0] == '_' {
                 chars := 0;
                 while chars < self.s.length &&
-                    (self.s.data[chars]->is_alphanum() || self.s.data[chars] == #char "_") {
+                    (self.s.data[chars]->is_alphanum() || self.s.data[chars] == '_') {
                      chars += 1;
                 }
 
@@ -254,7 +254,7 @@ TemplateToken :: struct {
 
         } else {
             length := 1;
-            while self.s.data[length] != #char "{" && length < self.s.length {
+            while self.s.data[length] != '{' && length < self.s.length {
                 length += 1;
             }
 
@@ -268,7 +268,7 @@ TemplateToken :: struct {
         }
 
         token_match :: macro (t: str, body: Code) {
-            if string.starts_with(*self.s, t) {
+            if str.starts_with(*self.s, t) {
                 tkn.text = self->eat_characters(t.length);
 
                 #unquote body;
@@ -276,7 +276,7 @@ TemplateToken :: struct {
         }
         
         token_consume :: macro (t: str, is_word: bool, kind: TemplateToken.Type) {
-            if string.starts_with(*self.s, t) {
+            if str.starts_with(*self.s, t) {
                 if is_word {
                     if !self.s.data[t.length]->is_alphanum() {
                         tkn.text = self->eat_characters(t.length);
@@ -351,7 +351,7 @@ parse_statements :: (use p: &TemplateParser) -> ParseError {
                 if node := parse_top_expression(p); node->is_err() {
                     return node->err()->unwrap();
                 } else {
-                    *array.get(instruction_targets, -1) << node->ok()->unwrap();
+                    *Array.get(instruction_targets, -1) << node->ok()->unwrap();
                 }
 
                 expect_token(p, .Expression_End);
@@ -359,9 +359,9 @@ parse_statements :: (use p: &TemplateParser) -> ParseError {
 
             case .Text {
                 text_node := make_node(t, .{
-                    Text = string.alloc_copy(tkn.text, as_allocator(&t.node_storage))
+                    Text = str.copy(tkn.text, as_allocator(&t.node_storage))
                 });
-                *array.get(instruction_targets, -1) << text_node;
+                *Array.get(instruction_targets, -1) << text_node;
             }
         }
     }
@@ -380,7 +380,7 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
                 Extend = text
             });
 
-            *array.get(instruction_targets, -1) << extend_node;
+            *Array.get(instruction_targets, -1) << extend_node;
         }
 
         case .Keyword_Block {
@@ -391,20 +391,20 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
                 Block = .{ block_name = text }
             });
 
-            *array.get(instruction_targets, -1) << block_node;
+            *Array.get(instruction_targets, -1) << block_node;
 
             instruction_targets << &union_as_ptr(block_node, .Block).contents;
         }
 
         case .Keyword_EndBlock {
-            array.pop(&instruction_targets);
+            Array.pop(&instruction_targets);
         }
 
         case .Keyword_Foreach {
             var_tkn: TemplateToken;
             switch p.l->peek().type {
                 case .Variable, .Symbol do var_tkn = p.l->consume();
-                case #default {
+                case _ {
                     return ParseError.{ Expected_Token = .Symbol };
                 }
             }
@@ -416,17 +416,17 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
 
             for_node := make_node(t, .{
                 Foreach = .{
-                    var_name = string.alloc_copy(var_tkn.text, as_allocator(&t.node_storage)),
+                    var_name = str.copy(var_tkn.text, as_allocator(&t.node_storage)),
                     list = list->unwrap(),
                 }
             });
 
-            *array.get(instruction_targets, -1) << for_node;
+            *Array.get(instruction_targets, -1) << for_node;
             instruction_targets << &union_as_ptr(for_node, .Foreach).body;
         }
 
         case .Keyword_EndForeach {
-            array.pop(&instruction_targets);
+            Array.pop(&instruction_targets);
         }
 
         case .Keyword_If {
@@ -437,20 +437,20 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
                 Condition = .{ cond = cond->ok()->unwrap() }
             });
 
-            *array.get(instruction_targets, -1) << if_node;
+            *Array.get(instruction_targets, -1) << if_node;
             instruction_targets << &union_as_ptr(if_node, .Condition).true_block;
         }
 
         case .Keyword_Else {
-            array.pop(&instruction_targets);
-            if_node := array.get(*array.get(instruction_targets, -1), -1);
+            Array.pop(&instruction_targets);
+            if_node := Array.get(*Array.get(instruction_targets, -1), -1);
             assert(if_node.tag == .Condition, "Expected a Condition node.");
 
             instruction_targets << &union_as_ptr(if_node, .Condition).false_block;
         }
 
         case .Keyword_EndIf {
-            array.pop(&instruction_targets);
+            Array.pop(&instruction_targets);
         }
 
         case .Keyword_Let {
@@ -473,7 +473,7 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
                 }
             });
 
-            *array.get(instruction_targets, -1) << let_node;
+            *Array.get(instruction_targets, -1) << let_node;
         }
     }
 
@@ -501,7 +501,7 @@ parse_top_expression :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
             if err.tag != .None do return .{ Err = err };
 
             args: [..] &TNode;
-            array.init(&args, 1, allocator=as_allocator(&t.node_storage));
+            Array.init(&args, 1, allocator=as_allocator(&t.node_storage));
 
             while (p.l->peek()).type != .Expression_End {
                 expr := parse_expression(p);
@@ -552,7 +552,7 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
 
     switch tkn := p.l->consume(); tkn.type {
         case .Variable, .Symbol {
-            name := tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
+            name := tkn.text |> str.copy(as_allocator(&t.node_storage));
 
             if next := p.l->peek(); next.type == '(' {
                 retval = parse_call(p, name)?;
@@ -577,7 +577,7 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
         }
 
         case .String_Literal {
-            value := tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
+            value := tkn.text |> str.copy(as_allocator(&t.node_storage));
 
             str_expr := make_node(t, .{
                 ExprString = .{ val = value }
@@ -603,7 +603,7 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
             retval = parse_expression(p)?;
         }
 
-        case #default {
+        case _ {
             return .{ Err = .{ Unexpected_Token = tkn } };
         }
     }
@@ -621,7 +621,7 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
             select_expr := make_node(t, .{
                 ExprSelector = .{
                     var = retval,
-                    field = sym_tkn.text |> string.alloc_copy(as_allocator(&t.node_storage)),
+                    field = sym_tkn.text |> str.copy(as_allocator(&t.node_storage)),
                 }
             });
 
@@ -647,7 +647,7 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
             p.l->consume();
         }
 
-        case #default do break break;
+        case _ do break break;
     }
 
     return .{ Ok = retval };
@@ -660,7 +660,7 @@ parse_string :: (use p: &TemplateParser) -> (str, ParseError) {
         return "", .{ Unexpected_Token = str_tkn };
     }
 
-    value := str_tkn.text |> string.alloc_copy(as_allocator(&t.node_storage));
+    value := str_tkn.text |> str.copy(as_allocator(&t.node_storage));
 
     return value, .{ None = .{} };
 }
@@ -731,7 +731,7 @@ make_node :: macro (t: &Template, v: TNode) -> &TNode {
 union_as_ptr :: macro (u: & $U, variant: U.tag_enum) => {
     return switch u {
         case variant as &v => v;
-        case #default => null;
+        case _ => null;
     };
 }
 
@@ -752,7 +752,7 @@ binary_op_from_token :: (type: TemplateToken.Type) -> ? BinaryOp {
         case '>'             => BinaryOp.Gt
         case .Greater_Equals => BinaryOp.Ge
 
-        case #default => (? BinaryOp).{};
+        case _ => (? BinaryOp).{};
     };
 }
 

@@ -11,13 +11,13 @@ main :: () {
     registry->define_proc("testing", (a: str, b: i32) -> [] i32 {
         printf("This works! {} {}\n", a, b);
 
-        return array.make(.[
+        return Array.make(.[
             1, 2, 3, 4
         ]);
     });
 
 
     registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] }, test_arr=cast([] u32) u32.[1] });
-    io.stream_flush(^stdio.stream);
+    io.stream_flush(&stdio.stream);
 }
 

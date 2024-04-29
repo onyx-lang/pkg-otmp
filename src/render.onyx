@@ -1,6 +1,6 @@
 package otmp
 
-use core {package, io, tprintf, iter, Optional, conv, array, map, alloc}
+use core {package, io, tprintf, iter, Optional, conv, alloc}
 use core.misc {
     as_any,
     any_as,
@@ -128,7 +128,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     scope = oldScope;
                 }
 
-                scope = map.copy(oldScope) |> alloc.on_heap();
+                scope = Map.copy(oldScope) |> alloc.on_heap();
 
                 for arg in iter.as_iter(partial.arguments)
                     |> iter.enumerate()
@@ -148,7 +148,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 }
             }
 
-            case #default {
+            case _ {
                 value := evaluate_expr(r, cast(&TNode) it);
                 if !value {
                     if error do return .Render_Error;
@@ -172,7 +172,7 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
     switch expr {
         // foo
         case .ExprVar as &var {
-            return scope->get_opt(var.var_name);
+            return scope->get(var.var_name);
         }
 
         // foo.bar
@@ -188,7 +188,7 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
             sub := evaluate_expr(r, subscript.sub)->and_then(any_to_int);
             return switch sub {
                 case .Some as v => any_subscript(sub_any, ~~ v);
-                case #default => .{};
+                case _ => .{};
             };
         }
 
@@ -207,13 +207,13 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
         case .ExprCall as &call {
             args: [..] any;
             for call.arguments {
-                array.push(&args, evaluate_expr(r, it)?);
+                Array.push(&args, evaluate_expr(r, it)?);
             }
 
             return reg.functions[call.func]?(args);
         }
 
-        case #default {
+        case _ {
             error = tprintf("Unhandled node type '{}'", expr.tag);
             return .{};
         }
@@ -243,7 +243,7 @@ evaluate_binop :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
         switch binop.op {
             case .Eq do return_value(left_str == right_str);
             case .Ne do return_value(left_str != right_str);
-            case #default do return .{};
+            case _   do return .{};
         }
     }
 
@@ -256,7 +256,7 @@ evaluate_binop :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
             case .Or  do return_value(left_bool || right_bool);
             case .Eq  do return_value(left_bool == right_bool);
             case .Ne  do return_value(left_bool != right_bool);
-            case #default do return .{};
+            case _    do return .{};
         }
     }
 
@@ -335,9 +335,7 @@ any_is_truthy :: (v: any) -> bool {
 
     info := v.type->info();
     if info.kind == .Slice || info.kind == .Dynamic_Array {
-        use core.array {Untyped_Array};
-
-        arr := cast(&Untyped_Array) v.data;
+        arr := cast(&Array(void)) v.data;
         return arr.count > 0;
     }
 

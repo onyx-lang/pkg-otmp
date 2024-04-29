@@ -1,7 +1,7 @@
 package otmp
 
 use core.alloc {as_allocator, arena}
-use core {package, array, io, os, string, misc, tprintf, printf}
+use core {package, io, os, misc, tprintf, printf}
 
 //
 // Template Registry
@@ -36,9 +36,9 @@ delete :: (t: &TemplateRegistry) {
                     continue;
                 }
 
-                if string.ends_with(it_name, extension) {
+                if str.ends_with(it_name, extension) {
                     name := it_name;
-                    name = name[0 .. string.last_index_of(name, #char ".")];
+                    name = name[0 .. str.last_index_of(name, '.')];
 
                     if prefix {
                         name = tprintf("{}/{}", prefix, name);
@@ -79,10 +79,10 @@ delete :: (t: &TemplateRegistry) {
         stored_contents := contents;
         defer delete(&stored_contents);
 
-        permanent_name := string.alloc_copy(name, as_allocator(&self.arena));
+        permanent_name := str.copy(name, as_allocator(&self.arena));
 
         temp          := template_make(as_allocator(&self.arena));
-        temp.filepath  = filename |> string.alloc_copy(as_allocator(&self.arena));
+        temp.filepath  = filename |> str.copy(as_allocator(&self.arena));
         temp.name      = permanent_name;
 
         if err := parse_template(temp, &contents); err.tag != .None {
@@ -96,7 +96,7 @@ delete :: (t: &TemplateRegistry) {
 
     refresh_templates :: (self: &TemplateRegistry) {
         for &temp in self.templates.entries {
-            array.clear(&temp.value.instructions);
+            Array.clear(&temp.value.instructions);
             arena.clear(&temp.value.node_storage);
 
             contents := os.get_contents(temp.value.filepath);
