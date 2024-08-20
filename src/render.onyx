@@ -12,123 +12,123 @@ use core.misc {
 
 #package
 TemplateRenderer :: struct {
-    t: &Template;
-    w: &io.Writer;
-    reg: &TemplateRegistry;
+    t: &Template
+    w: &io.Writer
+    reg: &TemplateRegistry
 
-    scope: &TemplateScope;
-    blocks: Map(str, &TNode);
+    scope: &TemplateScope
+    blocks: Map(str, &TNode)
 
-    index_variable: &i32;
+    index_variable: &i32
 
-    error: str;
+    error: str
 }
 
 #package
 render_template :: (use r: &TemplateRenderer) -> Error {
-    return render_instructions(r, t.instructions);
+    return render_instructions(r, t.instructions)
 }
 
 #local
 render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error {
     for instrs {
         switch it {
-            case .Text as text do io.write_str(w, text);
+            case .Text as text do io.write_str(w, text)
 
             case .Block as &block {
                 if blocks->has(block.block_name) {
-                    error = tprintf("Block '{}' defined multiple times.", block.block_name);
-                    return .Render_Error;
+                    error = tprintf("Block '{}' defined multiple times.", block.block_name)
+                    return .Render_Error
                 }
 
-                blocks[block.block_name] = it;
+                blocks[block.block_name] = it
             }
 
             case .Extend as template_name {
-                template := reg->get_template(template_name);
+                template := reg->get_template(template_name)
                 if template == null {
-                    error = tprintf("Template '{}' not found.");
-                    return .Render_Error;
+                    error = tprintf("Template '{}' not found.")
+                    return .Render_Error
                 }
 
                 if err := render_instructions(r, template.instructions); err != .None {
-                    return err;
+                    return err
                 }
             }
 
             case .Foreach as &for_node {
                 if !r.index_variable {
-                    r.index_variable = new_temp(i32);
+                    r.index_variable = new_temp(i32)
                 }
 
-                *r.index_variable = 0;
-                scope->put("__index", as_any(r.index_variable));
+                *r.index_variable = 0
+                scope->put("__index", as_any(r.index_variable))
 
                 evaluate_expr(r, for_node.list)->with([list] {
                     for any_iter(list) {
-                        scope->put(for_node.var_name, it);
+                        scope->put(for_node.var_name, it)
 
                         if err := render_instructions(r, for_node.body); err != .None {
-                            return err;
+                            return err
                         }
 
-                        *r.index_variable += 1;
+                        *r.index_variable += 1
                     }
 
-                    scope->delete(for_node.var_name);
-                });
+                    scope->delete(for_node.var_name)
+                })
             }
 
             case .Condition as &cond {
                 condition_value := evaluate_expr(r, cond.cond)
-                                    ->transform(any_is_truthy);
+                                    ->transform(any_is_truthy)
                 
-                rendered := false;
+                rendered := false
                 condition_value->with([truth] {
                     if truth {
-                        rendered = true;
+                        rendered = true
                         if err := render_instructions(r, cond.true_block); err != .None {
-                            return err;
+                            return err
                         }
                     }
-                });
+                })
 
                 if !rendered {
                     if err := render_instructions(r, cond.false_block); err != .None {
-                        return err;
+                        return err
                     }
                 }
             }
 
             case .Let as &let {
                 evaluate_expr(r, let.value)->with([value] {
-                    scope->put(let.var_name, value);
-                });
+                    scope->put(let.var_name, value)
+                })
             }
 
             case .ExprBlock as &block {
                 blocks->get(block.block_name)->with([the_block] {
                     if err := render_instructions(r, union_as_ptr(the_block, .Block).contents); err != .None {
-                        return err;
+                        return err
                     }
-                });
+                })
             }
 
             case .ExprPartial as &partial {
-                template := reg->get_template(partial.partial_name);
+                template := reg->get_template(partial.partial_name)
                 if !template {
-                    logf(.Error, "Partial '{}' not found.", partial.partial_name);
-                    continue;
+                    logf(.Error, "Partial '{}' not found.", partial.partial_name)
+                    continue
                 }
 
-                oldScope := scope;
+                oldScope := scope
                 defer {
-                    delete(scope);
-                    cfree(scope);
-                    scope = oldScope;
+                    delete(scope)
+                    cfree(scope)
+                    scope = oldScope
                 }
 
-                scope = Map.copy(oldScope) |> alloc.on_heap();
+                scope = Map.copy(oldScope) |> alloc.on_heap()
 
                 for arg in iter.as_iter(partial.arguments)
                     |> iter.enumerate()
@@ -139,32 +139,32 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
                     evaluate_expr(r, arg.value)->with([v] {
-                        scope->put(tprintf("_{}", arg.index), v);
-                    });
+                        scope->put(tprintf("_{}", arg.index), v)
+                    })
                 }
 
                 if err := render_instructions(r, template.instructions); err != .None {
-                    return err;
+                    return err
                 }
             }
 
             case _ {
-                value := evaluate_expr(r, cast(&TNode) it);
+                value := evaluate_expr(r, cast(&TNode) it)
                 if !value {
-                    if error do return .Render_Error;
-                    continue;
+                    if error do return .Render_Error
+                    continue
                 }
 
                 // There are weird bugs related to Optional any's (? any), where
                 // the wrong any is returned. Unwrapping as a pointer fixes this
                 // bug.
-                value_ := value->unwrap_ptr();
-                io.write_format_va(w, "{}", .[*value_]);
+                value_ := value->unwrap_ptr()
+                io.write_format_va(w, "{}", .[*value_])
             }
         }
     }
 
-    return .None;
+    return .None
 }
 
 #local
@@ -172,120 +172,120 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
     switch expr {
         // foo
         case .ExprVar as &var {
-            return scope->get(var.var_name);
+            return scope->get(var.var_name)
         }
 
         // foo.bar
         case .ExprSelector as &selector {
             return evaluate_expr(r, selector.var)?
                 |> any_dereference()
-                |> any_selector(selector.field);
+                |> any_selector(selector.field)
         }
 
         // foo[bar]
         case .ExprSubscript as &subscript {
-            sub_any := evaluate_expr(r, subscript.var)?;
-            sub := evaluate_expr(r, subscript.sub)->and_then(any_to_int);
+            sub_any := evaluate_expr(r, subscript.var)?
+            sub := evaluate_expr(r, subscript.sub)->and_then(any_to_int)
             return switch sub {
-                case .Some as v => any_subscript(sub_any, ~~ v);
-                case _ => .{};
-            };
+                case .Some as v => any_subscript(sub_any, ~~ v)
+                case _ => .{}
+            }
         }
 
         // 123
-        case .ExprInt as &int do return as_any(&int.val);
+        case .ExprInt as &int do return as_any(&int.val)
 
         // "asdf"
-        case .ExprString as &string do return as_any(&string.val);
+        case .ExprString as &string do return as_any(&string.val)
 
         // true or false
-        case .ExprBool as &bowl do return as_any(&bowl.val);
+        case .ExprBool as &bowl do return as_any(&bowl.val)
 
         // a + b
-        case .ExprBinOp do return evaluate_binop(r, expr);
+        case .ExprBinOp do return evaluate_binop(r, expr)
 
         case .ExprCall as &call {
-            args: [..] any;
+            args: [..] any
             for call.arguments {
-                Array.push(&args, evaluate_expr(r, it)?);
+                Array.push(&args, evaluate_expr(r, it)?)
             }
 
-            return reg.functions[call.func]?(args);
+            return reg.functions[call.func]?(args)
         }
 
         case _ {
-            error = tprintf("Unhandled node type '{}'", expr.tag);
-            return .{};
+            error = tprintf("Unhandled node type '{}'", expr.tag)
+            return .{}
         }
     }
 }
 
 #local
 evaluate_binop :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
-    binop := expr.ExprBinOp?;
+    binop := expr.ExprBinOp?
 
-    left := evaluate_expr(r, binop.left)?;
-    right := evaluate_expr(r, binop.right)?;
+    left := evaluate_expr(r, binop.left)?
+    right := evaluate_expr(r, binop.right)?
 
     if left.type == str {
-        left_str := (any_as(left, str)  |> Optional.from_ptr())?;
+        left_str := (any_as(left, str)  |> Optional.from_ptr())?
         if binop.op == .Add {
-            buf := make_temp(dyn_str);
+            buf := make_temp(dyn_str)
             res := conv.format_va(&buf, "{}{}", .[
                 any.{ &left_str,  str},
                 right
-            ]);
-            return_value(res);
+            ])
+            return_value(res)
         }
 
-        right_str := (any_as(right, str) |> Optional.from_ptr())?;
+        right_str := (any_as(right, str) |> Optional.from_ptr())?
 
         switch binop.op {
-            case .Eq do return_value(left_str == right_str);
-            case .Ne do return_value(left_str != right_str);
-            case _   do return .{};
+            case .Eq do return_value(left_str == right_str)
+            case .Ne do return_value(left_str != right_str)
+            case _   do return .{}
         }
     }
 
     if left.type == bool {
-        left_bool  := (any_as(left, bool)  |> Optional.from_ptr())?;
-        right_bool := (any_as(right, bool) |> Optional.from_ptr())?;
+        left_bool  := (any_as(left, bool)  |> Optional.from_ptr())?
+        right_bool := (any_as(right, bool) |> Optional.from_ptr())?
 
         switch binop.op {
-            case .And do return_value(left_bool && right_bool);
-            case .Or  do return_value(left_bool || right_bool);
-            case .Eq  do return_value(left_bool == right_bool);
-            case .Ne  do return_value(left_bool != right_bool);
-            case _    do return .{};
+            case .And do return_value(left_bool && right_bool)
+            case .Or  do return_value(left_bool || right_bool)
+            case .Eq  do return_value(left_bool == right_bool)
+            case .Ne  do return_value(left_bool != right_bool)
+            case _    do return .{}
         }
     }
 
-    left_value  := any_to_int(left)?;
-    right_value := any_to_int(right)?;
+    left_value  := any_to_int(left)?
+    right_value := any_to_int(right)?
 
     switch binop.op {
-        case .Add do return_value(left_value + right_value);
-        case .Sub do return_value(left_value - right_value);
-        case .Mul do return_value(left_value * right_value);
-        case .Div do return_value(left_value / right_value);
-        case .Mod do return_value(left_value % right_value);
+        case .Add do return_value(left_value + right_value)
+        case .Sub do return_value(left_value - right_value)
+        case .Mul do return_value(left_value * right_value)
+        case .Div do return_value(left_value / right_value)
+        case .Mod do return_value(left_value % right_value)
 
-        case .Eq do return_value(left_value == right_value);
-        case .Ne do return_value(left_value != right_value);
-        case .Lt do return_value(left_value <  right_value);
-        case .Le do return_value(left_value <= right_value);
-        case .Gt do return_value(left_value >  right_value);
-        case .Ge do return_value(left_value >= right_value);
+        case .Eq do return_value(left_value == right_value)
+        case .Ne do return_value(left_value != right_value)
+        case .Lt do return_value(left_value <  right_value)
+        case .Le do return_value(left_value <= right_value)
+        case .Gt do return_value(left_value >  right_value)
+        case .Ge do return_value(left_value >= right_value)
     }
     
-    return .{};
+    return .{}
 
 
     // Helper macro to allocate and return an any from temporary storage.
     return_value :: macro (x: $T) {
-        result := new_temp(T);
-        *result = x;
-        return .{ Some = as_any(result) };
+        result := new_temp(T)
+        *result = x
+        return .{ Some = as_any(result) }
     }
 }
 
@@ -294,52 +294,52 @@ evaluate_binop :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
 // :StandardLibrary
 any_to_int :: (v: any) -> ? i64 {
     switch v.type {
-        C(u32);
-        C(i32);
-        C(u64);
-        C(i64);
+        C(u32)
+        C(i32)
+        C(u64)
+        C(i64)
 
         C :: macro (T: type_expr) {
-            case T do return cast(i64, *cast(&T) v.data);
+            case T do return cast(i64, *cast(&T) v.data)
         }
     }
 
     if v.type->info().kind == .Enum {
         switch v.type->info()->as_enum().backing_type {
-            C(u8);
-            C(i8);
-            C(u16);
-            C(i16);
-            C(u32);
-            C(i32);
-            C(u64);
-            C(i64);
+            C(u8)
+            C(i8)
+            C(u16)
+            C(i16)
+            C(u32)
+            C(i32)
+            C(u64)
+            C(i64)
 
             C :: macro (T: type_expr) {
-                case T do return cast(i64, *cast(&T) v.data);
+                case T do return cast(i64, *cast(&T) v.data)
             }
         }
     }
 
-    return .{};
+    return .{}
 }
 
 #local
 any_is_truthy :: (v: any) -> bool {
-    any_to_int(v)->with([x] { return x != 0; });
+    any_to_int(v)->with([x] { return x != 0; })
 
     switch v.type {
-        case bool do return *cast(&bool, v.data);
-        case str  do return (*cast(&str, v.data)).count > 0;
+        case bool do return *cast(&bool, v.data)
+        case str  do return (*cast(&str, v.data)).count > 0
     }
 
-    info := v.type->info();
+    info := v.type->info()
     if info.kind == .Slice || info.kind == .Dynamic_Array {
-        arr := cast(&Array(void)) v.data;
-        return arr.count > 0;
+        arr := cast(&[..] void) v.data
+        return arr.count > 0
     }
 
-    return false;
+    return false
 }
 
 

@@ -3,111 +3,111 @@ package otmp
 use core.alloc.arena {Arena}
 
 TemplateRegistry :: struct {
-    templates: Map(str, &Template);
+    templates: Map(str, &Template)
 
-    arena: Arena;
+    arena: Arena
 
-    functions: Map(str, #type ([] any) -> any);
+    functions: Map(str, #type ([] any) -> any)
 }
 
 Template :: struct {
-    name: str;
-    filepath: str;
+    name: str
+    filepath: str
 
-    instructions: [..] &TNode;
+    instructions: [..] &TNode
 
-    node_storage: Arena;
+    node_storage: Arena
 }
 
 TNode :: union {
-    Text: str;
-    Extend: str;
+    Text: str
+    Extend: str
     Block: struct {
-        block_name: str;
-        contents: [..] &TNode;
-    };
+        block_name: str
+        contents: [..] &TNode
+    }
     Foreach: struct {
-        var_name: str;
-        list: &TNode;
-        body: [..] &TNode;
-    };
+        var_name: str
+        list: &TNode
+        body: [..] &TNode
+    }
     Condition: struct {
-        cond: &TNode;
-        true_block: [..] &TNode;
-        false_block: [..] &TNode;
-    };
+        cond: &TNode
+        true_block: [..] &TNode
+        false_block: [..] &TNode
+    }
     Let: struct {
-        var_name: str;
-        value: &TNode;
-    };
+        var_name: str
+        value: &TNode
+    }
     ExprBlock: struct {
-        block_name: str;
-    };
+        block_name: str
+    }
     ExprPartial: struct {
-        partial_name: str;
-        arguments: [..] &TNode;
-    };
+        partial_name: str
+        arguments: [..] &TNode
+    }
     ExprVar: struct {
-        var_name: str;
-    };
+        var_name: str
+    }
     ExprSelector: struct {
-        var: &TNode;
-        field: str;
-    };
+        var: &TNode
+        field: str
+    }
     ExprSubscript: struct {
-        var: &TNode;
-        sub: &TNode;
-    };
+        var: &TNode
+        sub: &TNode
+    }
     ExprInt: struct {
-        val: i32;
-    };
+        val: i32
+    }
     ExprString: struct {
-        val: str;
-    };
+        val: str
+    }
     ExprBool: struct {
-        val: bool;
-    };
+        val: bool
+    }
     ExprBinOp: struct {
-        left: &TNode;
-        right: &TNode;
-        op: BinaryOp;
-    };
+        left: &TNode
+        right: &TNode
+        op: BinaryOp
+    }
     ExprCall: struct {
-        func: str;
-        arguments: [..] &TNode;
-    };
+        func: str
+        arguments: [..] &TNode
+    }
 }
 
 
 Error :: enum {
-    None;
-    Template_Not_Found;
-    Duplicate_Template;
+    None
+    Template_Not_Found
+    Duplicate_Template
 
-    Template_Parse_Error;
+    Template_Parse_Error
 
-    Render_Error;
+    Render_Error
 }
 
 
-TemplateScope :: #type Map(str, any);
+TemplateScope :: #type Map(str, any)
 
 
 BinaryOp :: enum {
-    Add;
-    Sub;
-    Mul;
-    Div;
-    Mod;
+    Add
+    Sub
+    Mul
+    Div
+    Mod
 
-    Eq;
-    Ne;
-    Lt;
-    Le;
-    Gt;
-    Ge;
+    Eq
+    Ne
+    Lt
+    Le
+    Gt
+    Ge
 
-    And;
-    Or;
+    And
+    Or
 }
 

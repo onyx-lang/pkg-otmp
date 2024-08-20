@@ -8,128 +8,143 @@ use core {package, io, os, misc, tprintf, printf}
 // 
 
 registry :: () -> TemplateRegistry {
-    t: TemplateRegistry;
-    t.arena = arena.make(context.allocator, 64 * 1024);
-    t.templates->init();
-    t.functions->init();
+    t: TemplateRegistry
+    t.arena = arena.make(context.allocator, 64 * 1024)
+    t.templates->init()
+    t.functions->init()
 
-    return t;
+    return t
 }
 
 #overload
 delete :: (t: &TemplateRegistry) {
     for &temp in t.templates.entries {
-        delete(temp.value);
+        delete(temp.value)
     }
 
-    delete(&t.templates);
-    arena.free(&t.arena);
+    delete(&t.templates)
+    arena.free(&t.arena)
 }
 
-#inject TemplateRegistry {
-    load_directory :: (self: &TemplateRegistry, dir: str, extension: str) {
-        recurse :: (self: &TemplateRegistry, dir, prefix, extension: str) {
-            for os.list_directory(dir) {
-                it_name := it->name();
+TemplateRegistry.load_directory :: (self: &TemplateRegistry, dir: str, extension: str) {
+    recurse :: (self: &TemplateRegistry, dir, prefix, extension: str) {
+        for os.list_directory(dir) {
+            it_name := it->name()
 
-                if it_name == "." || it_name == ".." {
-                    continue;
+            if it_name == "." || it_name == ".." {
+                continue
+            }
+
+            if str.ends_with(it_name, extension) {
+                name := it_name
+                name = name[0 .. str.last_index_of(name, '.')]
+
+                if prefix {
+                    name = os.path_join(prefix, name)
                 }
 
-                if str.ends_with(it_name, extension) {
-                    name := it_name;
-                    name = name[0 .. str.last_index_of(name, '.')];
+                self->load_template(name, os.path_join(dir, it_name))
+            }
 
-                    if prefix {
-                        name = tprintf("{}/{}", prefix, name);
-                    }
-
-                    self->load_template(name, tprintf("{}/{}", dir, it_name));
+            if it.type == .Directory {
+                p := it_name
+                if prefix {
+                    p = os.path_join(prefix, it_name)
                 }
 
-                if it.type == .Directory {
-                    p := it_name;
-                    if prefix {
-                        p = tprintf("{}/{}", prefix, it_name);
-                    }
-
-                    recurse(self,
-                        tprintf("{}/{}", dir, it_name), 
-                        p,
-                        extension);
-                }
+                recurse(self,
+                    os.path_join(dir, it_name),
+                    p,
+                    extension)
             }
         }
-
-        recurse(self, dir, "", extension);
     }
 
-    load_template :: (self: &TemplateRegistry, name: str, filename: str) -> Error {
-        logf(.Info, "Loading template {} from {}.", name, filename);
-        if self.templates->has(name) {
-            logf(.Error, "Template '{}' already exists.\n");
-            return .Duplicate_Template;
-        }
+    recurse(self, dir, "", extension)
+}
 
-        if !os.is_file(filename) {
-            return .Template_Not_Found;
-        }
-
-        contents := os.get_contents(filename);
-        stored_contents := contents;
-        defer delete(&stored_contents);
-
-        permanent_name := str.copy(name, as_allocator(&self.arena));
-
-        temp          := template_make(as_allocator(&self.arena));
-        temp.filepath  = filename |> str.copy(as_allocator(&self.arena));
-        temp.name      = permanent_name;
-
-        if err := parse_template(temp, &contents); err.tag != .None {
-            logf(.Error, "OTMP: {!d}", err);
-            return .Template_Parse_Error;
-        }
-
-        self.templates[permanent_name] = temp;
-        return .None;
+TemplateRegistry.load_template :: (self: &TemplateRegistry, name: str, filename: str) -> Error {
+    logf(.Info, "Loading template {} from {}.", name, filename)
+    if self.templates->has(name) {
+        logf(.Error, "Template '{}' already exists.\n")
+        return .Duplicate_Template
     }
 
-    refresh_templates :: (self: &TemplateRegistry) {
-        for &temp in self.templates.entries {
-            Array.clear(&temp.value.instructions);
-            arena.clear(&temp.value.node_storage);
-
-            contents := os.get_contents(temp.value.filepath);
-            stored_contents := contents;
-            defer delete(&stored_contents);
-
-            parse_template(temp.value, &contents);
-        }
+    if !os.is_file(filename) {
+        return .Template_Not_Found
     }
 
-    get_template :: (self: &TemplateRegistry, name: str) -> &Template {
-        return self.templates[name] ?? null;
+    contents := os.get_contents(filename)
+    stored_contents := contents
+    defer delete(&stored_contents)
+
+    permanent_name := str.copy(name, as_allocator(&self.arena))
+
+    temp          := template_make(as_allocator(&self.arena))
+    temp.filepath  = filename |> str.copy(as_allocator(&self.arena))
+    temp.name      = permanent_name
+
+    if err := parse_template(temp, &contents); err.tag != .None {
+        logf(.Error, "OTMP: {!d}", err)
+        return .Template_Parse_Error
     }
 
-    render_template :: #match #local {}
+    self.templates[permanent_name] = temp
+    return .None
+}
 
-    #overload
-    TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: &Map(str, any)) -> Error {
-        temp := self.templates[name] ?? null;
-        if temp == null {
-            return .Template_Not_Found;
-        }
+TemplateRegistry.define_template :: (self: &TemplateRegistry, name: str, template: str) -> Error {
+    permanent_name := str.copy(name, as_allocator(&self.arena))
 
-        return temp->render(self, scope, output);
+    temp          := template_make(as_allocator(&self.arena))
+    temp.filepath  = "<inline>"
+    temp.name      = permanent_name
+
+    contents := template
+    if err := parse_template(temp, &contents); err.tag != .None {
+        logf(.Error, "OTMP: {!d}", err)
+        return .Template_Parse_Error
     }
 
-    #overload
-    TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
-        tscope := core.misc.any_to_map(scope)->or_return(Error.Render_Error);
-        defer delete(&tscope);
+    self.templates[permanent_name] = temp
+    return .None
+}
 
-        return self->render_template(name, output, &tscope);
+TemplateRegistry.refresh_templates :: (self: &TemplateRegistry) {
+    for &temp in self.templates.entries {
+        Array.clear(&temp.value.instructions)
+        arena.clear(&temp.value.node_storage)
+
+        contents := os.get_contents(temp.value.filepath)
+        stored_contents := contents
+        defer delete(&stored_contents)
+
+        parse_template(temp.value, &contents)
     }
+}
+
+TemplateRegistry.get_template :: (self: &TemplateRegistry, name: str) -> &Template {
+    return self.templates[name] ?? null
+}
+
+TemplateRegistry.render_template :: #match #local {}
+
+#overload
+TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: &Map(str, any)) -> Error {
+    temp := self.templates[name] ?? null
+    if temp == null {
+        return .Template_Not_Found
+    }
+
+    return temp->render(self, scope, output)
+}
+
+#overload
+TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
+    tscope := core.misc.any_to_map(scope)->or_return(Error.Render_Error)
+    defer delete(&tscope)
+
+    return self->render_template(name, output, &tscope)
 }
 
 
@@ -140,34 +155,32 @@ delete :: (t: &TemplateRegistry) {
 //
 #package
 template_make :: (alloc: Allocator) -> &Template {
-    t := new(Template, alloc);
-    t.node_storage = arena.make(context.allocator, 64 * 1024);
-    return t;
+    t := new(Template, alloc)
+    t.node_storage = arena.make(context.allocator, 64 * 1024)
+    return t
 }
 
 #overload
 delete :: (t: &Template) {
-    delete(&t.instructions);
-    arena.free(&t.node_storage);
+    delete(&t.instructions)
+    arena.free(&t.node_storage)
 }
 
-#inject Template {
-    render :: (self: &Template, reg: &TemplateRegistry, scope: &TemplateScope, output: &io.Writer) -> Error {
-        r := &TemplateRenderer.{
-            t = self,
-            w = output,
-            reg = reg,
-            scope = scope
-        };
-
-        err := render_template(r);
-
-        if err != .None {
-            logf(.Error, "Template Error: {}\n", r.error);
-        }
-
-        return err;
+Template.render :: (self: &Template, reg: &TemplateRegistry, scope: &TemplateScope, output: &io.Writer) -> Error {
+    r := &TemplateRenderer.{
+        t = self,
+        w = output,
+        reg = reg,
+        scope = scope
     }
+
+    err := render_template(r)
+
+    if err != .None {
+        logf(.Error, "Template Error: {}\n", r.error)
+    }
+
+    return err
 }
 
 
@@ -175,71 +188,70 @@ delete :: (t: &Template) {
 
 
 // Template procedures
-#inject
 TemplateRegistry.define_proc :: #match #local {}
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ([] any) -> any) {
-    self.functions[name] = proc;
+    self.functions[name] = proc
 }
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1) -> $R) {
-    set_temporary_allocator_to_internal_arena(self);
+    set_temporary_allocator_to_internal_arena(self)
     self.functions[name] = (args, [proc]) => {
         res := proc(
             *misc.any_as(args[0], A1)
-        );
+        )
         
-        return any.{ context.temp_allocator->move(res), R };
-    };
+        return any.{ context.temp_allocator->move(res), R }
+    }
 }
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2) -> $R) {
-    set_temporary_allocator_to_internal_arena(self);
+    set_temporary_allocator_to_internal_arena(self)
     self.functions[name] = (args, [proc]) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2)
-        );
+        )
         
-        return any.{ context.temp_allocator->move(res), R };
-    };
+        return any.{ context.temp_allocator->move(res), R }
+    }
 }
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3) -> $R) {
-    set_temporary_allocator_to_internal_arena(self);
+    set_temporary_allocator_to_internal_arena(self)
     self.functions[name] = (args, [proc]) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2),
             *misc.any_as(args[2], A3),
-        );
+        )
         
-        return any.{ context.temp_allocator->move(res), R };
-    };
+        return any.{ context.temp_allocator->move(res), R }
+    }
 }
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4) -> $R) {
-    set_temporary_allocator_to_internal_arena(self);
+    set_temporary_allocator_to_internal_arena(self)
     self.functions[name] = (args, [proc]) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2),
             *misc.any_as(args[2], A3),
             *misc.any_as(args[3], A4),
-        );
+        )
         
-        return any.{ context.temp_allocator->move(res), R };
-    };
+        return any.{ context.temp_allocator->move(res), R }
+    }
 }
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4, $A5) -> $R) {
-    set_temporary_allocator_to_internal_arena(self);
+    set_temporary_allocator_to_internal_arena(self)
     self.functions[name] = (args, [proc]) => {
         res := proc(
             *misc.any_as(args[0], A1),
@@ -247,15 +259,15 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1,
             *misc.any_as(args[2], A3),
             *misc.any_as(args[3], A4),
             *misc.any_as(args[4], A5),
-        );
+        )
         
-        return any.{ context.temp_allocator->move(res), R };
-    };
+        return any.{ context.temp_allocator->move(res), R }
+    }
 }
 
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4, $A5, $A6) -> $R) {
-    set_temporary_allocator_to_internal_arena(self);
+    set_temporary_allocator_to_internal_arena(self)
     self.functions[name] = (args, [proc]) => {
         res := proc(
             *misc.any_as(args[0], A1),
@@ -264,19 +276,19 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1,
             *misc.any_as(args[3], A4),
             *misc.any_as(args[4], A5),
             *misc.any_as(args[5], A6),
-        );
+        )
         
-        return any.{ context.temp_allocator->move(res), R };
-    };
+        return any.{ context.temp_allocator->move(res), R }
+    }
 }
 
 #local
 set_temporary_allocator_to_internal_arena :: macro (t: &TemplateRegistry) {
-    old_allocator := context.temp_allocator;
-    context.temp_allocator = as_allocator(&t.arena);
+    old_allocator := context.temp_allocator
+    context.temp_allocator = as_allocator(&t.arena)
 
     defer {
-        context.temp_allocator = old_allocator;
+        context.temp_allocator = old_allocator
     }
 }
 

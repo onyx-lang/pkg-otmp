@@ -5,287 +5,285 @@ use core {package, iter, conv, Result}
 use core.alloc {as_allocator}
 
 ParseError :: union {
-    None: void;
-    Unexpected_Token: TemplateToken;
-    Expected_Token: TemplateToken.Type;
+    None: void
+    Unexpected_Token: TemplateToken
+    Expected_Token: TemplateToken.Type
 
-    Nested_Command: TemplateToken;
+    Nested_Command: TemplateToken
 
-    Cannot_Nest_Blocks: TemplateToken;
+    Cannot_Nest_Blocks: TemplateToken
 
-    Error: str;
+    Error: str
 }
 
 
 #package
 TemplateLexer :: struct {
     // The input string
-    s: &str;
-    line: u32;
-    col:  u32;
+    s: &str
+    line: u32
+    col:  u32
 
-    hit_eof := false;
+    hit_eof := false
 
-    inside_command := false;
-    inside_expression := false;
-    error: ParseError;
+    inside_command := false
+    inside_expression := false
+    error: ParseError
 
-    token_buffer: [..] TemplateToken;
+    token_buffer: [..] TemplateToken
 }
 
 TemplateToken :: struct {
     Type :: enum {
-        Error :: 256;
-        EOF;
+        Error :: 256
+        EOF
 
         Text;   // Raw Text
 
-        Command_Start; Command_End;
-        Expression_Start; Expression_End;
+        Command_Start; Command_End
+        Expression_Start; Expression_End
 
-        Keyword_Block;
-        Keyword_EndBlock;
-        Keyword_Foreach;
-        Keyword_EndForeach;
-        Keyword_In;
-        Keyword_Extends;
-        Keyword_Partial;
-        Keyword_If;
-        Keyword_Else;
-        Keyword_EndIf;
-        Keyword_True;
-        Keyword_False;
-        Keyword_Let;
+        Keyword_Block
+        Keyword_EndBlock
+        Keyword_Foreach
+        Keyword_EndForeach
+        Keyword_In
+        Keyword_Extends
+        Keyword_Partial
+        Keyword_If
+        Keyword_Else
+        Keyword_EndIf
+        Keyword_True
+        Keyword_False
+        Keyword_Let
 
-        String_Literal;
-        Int_Literal;
+        String_Literal
+        Int_Literal
 
-        Variable;
-        Symbol;
+        Variable
+        Symbol
 
-        Equals;
-        Not_Equals;
-        Less_Equals;
-        Greater_Equals;
+        Equals
+        Not_Equals
+        Less_Equals
+        Greater_Equals
 
-        And;
-        Or;
+        And
+        Or
     }
 
-    type: Type;
-    text: str;
-    line: u32;
-    col:  u32;
+    type: Type
+    text: str
+    line: u32
+    col:  u32
 }
 
-#inject TemplateLexer {
-    peek :: (self: &TemplateLexer, n := 0) -> TemplateToken {
-        while n >= self.token_buffer.length {
-            next := self->eat_next_token();
-            if next.type == .EOF do return next;
+TemplateLexer.peek :: (self: &TemplateLexer, n := 0) -> TemplateToken {
+    while n >= self.token_buffer.length {
+        next := self->eat_next_token()
+        if next.type == .EOF do return next
 
-            self.token_buffer << next;
-        }
-
-        return self.token_buffer[n];
+        self.token_buffer << next
     }
 
-    consume :: (self: &TemplateLexer) -> TemplateToken {
-        if !Array.empty(self.token_buffer) {
-            tkn := self.token_buffer[0];
-            Array.delete(&self.token_buffer, 0);
-            return tkn;
-        }
+    return self.token_buffer[n]
+}
 
-        tkn := self->eat_next_token();
-        return tkn;
+TemplateLexer.consume :: (self: &TemplateLexer) -> TemplateToken {
+    if !Array.empty(self.token_buffer) {
+        tkn := self.token_buffer[0]
+        Array.delete(&self.token_buffer, 0)
+        return tkn
     }
 
-    eat_characters :: (self: &TemplateLexer, chars := 1) -> str {
-        for chars {
-            if self.s.data[it] == '\n' {
-                self.line += 1;
-                self.col   = 0;
+    tkn := self->eat_next_token()
+    return tkn
+}
+
+TemplateLexer.eat_characters :: (self: &TemplateLexer, chars := 1) -> str {
+    for chars {
+        if self.s.data[it] == #char "\n" {
+            self.line += 1
+            self.col   = 0
+        }
+
+        self.col += 1
+    }
+
+    defer str.advance(self.s, chars)
+    return self.s.data[0 .. chars]
+}
+
+TemplateLexer.eat_whitespace :: (self: &TemplateLexer) {
+    while !str.empty(*self.s) {
+        switch self.s.data[0] {
+            case #char "\n", #char "\t", #char "\r", #char " " {
+                self->eat_characters(1)
             }
 
-            self.col += 1;
-        }
-
-        defer str.advance(self.s, chars);
-        return self.s.data[0 .. chars];
-    }
-
-    eat_whitespace :: (self: &TemplateLexer) {
-        while !str.empty(*self.s) {
-            switch self.s.data[0] {
-                case '\n', '\t', '\r', ' ' {
-                    self->eat_characters(1);
-                }
-
-                case _ {
-                    break break;
-                }
+            case #default {
+                break break
             }
         }
     }
+}
 
-    eat_next_token :: (self: &TemplateLexer) -> TemplateToken {
-        tkn: TemplateToken; 
-        tkn.line = self.line;
-        tkn.col  = self.col;
+TemplateLexer.eat_next_token :: (self: &TemplateLexer) -> TemplateToken {
+    tkn: TemplateToken; 
+    tkn.line = self.line
+    tkn.col  = self.col
 
-        if self.inside_command || self.inside_expression {
-            self->eat_whitespace();
+    if self.inside_command || self.inside_expression {
+        self->eat_whitespace()
+    }
+    
+    if str.empty(*self.s) {
+        self.hit_eof = true
+        yield_token(.EOF)
+    }
+
+    token_match("{{") {
+        if self.inside_command {
+            self.error = .{ Nested_Command = .{} }
+            yield_token(.Error)
         }
-        
-        if str.empty(*self.s) {
-            self.hit_eof = true;
-            yield_token(.EOF);
+
+        self.inside_command = true
+        yield_token(.Command_Start)
+    }
+
+    token_match("}}") {
+        if self.inside_command {
+            self.inside_command = false
         }
 
-        token_match("{{") {
-            if self.inside_command {
-                self.error = .{ Nested_Command = .{} };
-                yield_token(.Error);
+        yield_token(.Command_End)
+    }
+
+    token_match("{%") {
+        if self.inside_expression {
+            self.error = .{ Nested_Command = .{} }
+            yield_token(.Error)
+        }
+
+        self.inside_expression = true
+        yield_token(.Expression_Start)
+    }
+
+    token_match("%}") {
+        if self.inside_expression {
+            self.inside_expression = false
+        }
+
+        yield_token(.Expression_End)
+    }
+
+    if self.inside_command || self.inside_expression {
+        token_consume("block",      true, .Keyword_Block);            
+        token_consume("endblock",   true, .Keyword_EndBlock);            
+        token_consume("foreach",    true, .Keyword_Foreach);            
+        token_consume("endforeach", true, .Keyword_EndForeach);            
+        token_consume("in",         true, .Keyword_In)
+        token_consume("extends",    true, .Keyword_Extends)
+        token_consume("partial",    true, .Keyword_Partial)
+        token_consume("if",         true, .Keyword_If)
+        token_consume("else",       true, .Keyword_Else)
+        token_consume("endif",      true, .Keyword_EndIf)
+        token_consume("true",       true, .Keyword_True)
+        token_consume("false",      true, .Keyword_False)
+        token_consume("let",        true, .Keyword_Let)
+        token_consume("==",         false, .Equals)
+        token_consume("!=",         false, .Not_Equals)
+        token_consume("<=",         false, .Less_Equals)
+        token_consume(">=",         false, .Greater_Equals)
+        token_consume("&&",         false, .And)
+        token_consume("||",         false, .Or)
+
+        if self.s.data[0] == #char "\"" {
+            // :TODO add escaped strings
+            self->eat_characters(1)
+
+            index := str.index_of(*self.s, #char "\"")
+            tkn.text = self->eat_characters(index)
+            self->eat_characters(1)
+            
+            yield_token(.String_Literal)
+        }
+
+        if self.s.data[0] == #char "$" {
+            self->eat_characters(1)
+
+            chars := 0
+            while chars < self.s.length &&
+                (self.s.data[chars]->is_alphanum() || self.s.data[chars] == '_')
+            {
+                 chars += 1
             }
 
-            self.inside_command = true;
-            yield_token(.Command_Start);
+            tkn.text = self->eat_characters(chars)
+
+            yield_token(.Variable)
         }
 
-        token_match("}}") {
-            if self.inside_command {
-                self.inside_command = false;
+        if self.s.data[0]->is_num() {
+            chars := 0
+            while chars < self.s.length && self.s.data[chars]->is_num() {
+                 chars += 1
             }
 
-            yield_token(.Command_End);
+            tkn.text = self->eat_characters(chars)
+
+            yield_token(.Int_Literal)
         }
 
-        token_match("{%") {
-            if self.inside_expression {
-                self.error = .{ Nested_Command = .{} };
-                yield_token(.Error);
+        if self.s.data[0]->is_alphanum() || self.s.data[0] == '_' {
+            chars := 0
+            while chars < self.s.length &&
+                (self.s.data[chars]->is_alphanum() || self.s.data[chars] == #char "_") {
+                 chars += 1
             }
 
-            self.inside_expression = true;
-            yield_token(.Expression_Start);
+            tkn.text = self->eat_characters(chars)
+
+            yield_token(.Symbol)
         }
 
-        token_match("%}") {
-            if self.inside_expression {
-                self.inside_expression = false;
-            }
+        tkn.text = self->eat_characters(1)
+        yield_token(~~ tkn.text[0])
 
-            yield_token(.Expression_End);
+    } else {
+        length := 1
+        while self.s.data[length] != #char "{" && length < self.s.length {
+            length += 1
         }
 
-        if self.inside_command || self.inside_expression {
-            token_consume("block",      true, .Keyword_Block);            
-            token_consume("endblock",   true, .Keyword_EndBlock);            
-            token_consume("foreach",    true, .Keyword_Foreach);            
-            token_consume("endforeach", true, .Keyword_EndForeach);            
-            token_consume("in",         true, .Keyword_In);
-            token_consume("extends",    true, .Keyword_Extends);
-            token_consume("partial",    true, .Keyword_Partial);
-            token_consume("if",         true, .Keyword_If);
-            token_consume("else",       true, .Keyword_Else);
-            token_consume("endif",      true, .Keyword_EndIf);
-            token_consume("true",       true, .Keyword_True);
-            token_consume("false",      true, .Keyword_False);
-            token_consume("let",        true, .Keyword_Let);
-            token_consume("==",         false, .Equals);
-            token_consume("!=",         false, .Not_Equals);
-            token_consume("<=",         false, .Less_Equals);
-            token_consume(">=",         false, .Greater_Equals);
-            token_consume("&&",         false, .And);
-            token_consume("||",         false, .Or);
+        tkn.text = self->eat_characters(length)
+        yield_token(.Text)
+    }
 
-            if self.s.data[0] == '"' {
-                // :TODO add escaped strings
-                self->eat_characters(1);
+    yield_token :: macro (kind: TemplateToken.Type) {
+        tkn.type = kind
+        return tkn
+    }
 
-                index := str.index_of(*self.s, '"');
-                tkn.text = self->eat_characters(index);
-                self->eat_characters(1);
-                
-                yield_token(.String_Literal);
-            }
+    token_match :: macro (t: str, body: Code) {
+        if str.starts_with(*self.s, t) {
+            tkn.text = self->eat_characters(t.length)
 
-            if self.s.data[0] == '$' {
-                self->eat_characters(1);
-
-                chars := 0;
-                while chars < self.s.length &&
-                    (self.s.data[chars]->is_alphanum() || self.s.data[chars] == '_')
-                {
-                     chars += 1;
+            #unquote body
+        }
+    }
+    
+    token_consume :: macro (t: str, is_word: bool, kind: TemplateToken.Type) {
+        if str.starts_with(*self.s, t) {
+            if is_word {
+                if !self.s.data[t.length]->is_alphanum() {
+                    tkn.text = self->eat_characters(t.length)
+                    yield_token(kind)
                 }
-
-                tkn.text = self->eat_characters(chars);
-
-                yield_token(.Variable);
-            }
-
-            if self.s.data[0]->is_num() {
-                chars := 0;
-                while chars < self.s.length && self.s.data[chars]->is_num() {
-                     chars += 1;
-                }
-
-                tkn.text = self->eat_characters(chars);
-
-                yield_token(.Int_Literal);
-            }
-
-            if self.s.data[0]->is_alphanum() || self.s.data[0] == '_' {
-                chars := 0;
-                while chars < self.s.length &&
-                    (self.s.data[chars]->is_alphanum() || self.s.data[chars] == '_') {
-                     chars += 1;
-                }
-
-                tkn.text = self->eat_characters(chars);
-
-                yield_token(.Symbol);
-            }
-
-            tkn.text = self->eat_characters(1);
-            yield_token(~~ tkn.text[0]);
-
-        } else {
-            length := 1;
-            while self.s.data[length] != '{' && length < self.s.length {
-                length += 1;
-            }
-
-            tkn.text = self->eat_characters(length);
-            yield_token(.Text);
-        }
-
-        yield_token :: macro (kind: TemplateToken.Type) {
-            tkn.type = kind;
-            return tkn;
-        }
-
-        token_match :: macro (t: str, body: Code) {
-            if str.starts_with(*self.s, t) {
-                tkn.text = self->eat_characters(t.length);
-
-                #unquote body;
-            }
-        }
-        
-        token_consume :: macro (t: str, is_word: bool, kind: TemplateToken.Type) {
-            if str.starts_with(*self.s, t) {
-                if is_word {
-                    if !self.s.data[t.length]->is_alphanum() {
-                        tkn.text = self->eat_characters(t.length);
-                        yield_token(kind);
-                    }
-                } else {
-                    tkn.text = self->eat_characters(t.length);
-                    yield_token(kind);
-                }
+            } else {
+                tkn.text = self->eat_characters(t.length)
+                yield_token(kind)
             }
         }
     }
@@ -293,7 +291,7 @@ TemplateToken :: struct {
 
 #overload
 delete :: (tl: &TemplateLexer) {
-    delete(&tl.token_buffer);
+    delete(&tl.token_buffer)
 }
 
 #overload
@@ -303,36 +301,36 @@ iter.as_iter :: (tl: &TemplateLexer) => {
         
         (ctx) => {
             if !ctx.hit_error {
-                tkn := ctx.tl->consume();
+                tkn := ctx.tl->consume()
                 if tkn.type == .Error || tkn.type == .EOF {
-                    ctx.hit_error = true;
+                    ctx.hit_error = true
                 }
 
-                return tkn |> Optional.make();
+                return tkn |> Optional.make()
             }
 
-            return .None;
+            return .None
         }
-    );
+    )
 }
 
 
 #package
 TemplateParser :: struct {
-    t: &Template;
-    l: &TemplateLexer;
+    t: &Template
+    l: &TemplateLexer
 
-    instruction_targets: [..] &[..] &TNode;
+    instruction_targets: [..] &[..] &TNode
 }
 
 #package
 parse_template :: (t: &Template, s: &str) -> ParseError {
-    l := TemplateLexer.{s};
-    p := TemplateParser.{t, &l};
-    p.instruction_targets << &t.instructions;
-    defer delete(&p.instruction_targets);
+    l := TemplateLexer.{s}
+    p := TemplateParser.{t, &l}
+    p.instruction_targets << &t.instructions
+    defer delete(&p.instruction_targets)
 
-    return parse_statements(&p);
+    return parse_statements(&p)
 }
 
 #local
@@ -341,198 +339,198 @@ parse_statements :: (use p: &TemplateParser) -> ParseError {
         switch tkn := p.l->consume(); tkn.type {
             case .Command_Start {
                 if err := parse_statement(p); err.tag != .None {
-                    return err;
+                    return err
                 }
 
-                expect_token(p, .Command_End);
+                expect_token(p, .Command_End)
             }
 
             case .Expression_Start {
                 if node := parse_top_expression(p); node->is_err() {
-                    return node->err()->unwrap();
+                    return node->err()->unwrap()
                 } else {
-                    *Array.get(instruction_targets, -1) << node->ok()->unwrap();
+                    *Array.get(instruction_targets, -1) << node->ok()->unwrap()
                 }
 
-                expect_token(p, .Expression_End);
+                expect_token(p, .Expression_End)
             }
 
             case .Text {
                 text_node := make_node(t, .{
                     Text = str.copy(tkn.text, as_allocator(&t.node_storage))
-                });
-                *Array.get(instruction_targets, -1) << text_node;
+                })
+                *Array.get(instruction_targets, -1) << text_node
             }
         }
     }
 
-    return .{ None = .{} };
+    return .{ None = .{} }
 }
 
 #local
 parse_statement :: (use p: &TemplateParser) -> ParseError {
     switch tkn := p.l->consume(); tkn.type {
         case .Keyword_Extends {
-            text, err := parse_string(p);
-            if err.tag != .None do return err;
+            text, err := parse_string(p)
+            if err.tag != .None do return err
 
             extend_node := make_node(t, TNode.{
                 Extend = text
-            });
+            })
 
-            *Array.get(instruction_targets, -1) << extend_node;
+            *Array.get(instruction_targets, -1) << extend_node
         }
 
         case .Keyword_Block {
-            text, err := parse_string(p);
-            if err.tag != .None do return err;
+            text, err := parse_string(p)
+            if err.tag != .None do return err
 
             block_node := make_node(t, .{
                 Block = .{ block_name = text }
-            });
+            })
 
-            *Array.get(instruction_targets, -1) << block_node;
+            *Array.get(instruction_targets, -1) << block_node
 
-            instruction_targets << &union_as_ptr(block_node, .Block).contents;
+            instruction_targets << &union_as_ptr(block_node, .Block).contents
         }
 
         case .Keyword_EndBlock {
-            Array.pop(&instruction_targets);
+            Array.pop(&instruction_targets)
         }
 
         case .Keyword_Foreach {
-            var_tkn: TemplateToken;
+            var_tkn: TemplateToken
             switch p.l->peek().type {
-                case .Variable, .Symbol do var_tkn = p.l->consume();
-                case _ {
-                    return ParseError.{ Expected_Token = .Symbol };
+                case .Variable, .Symbol do var_tkn = p.l->consume()
+                case #default {
+                    return ParseError.{ Expected_Token = .Symbol }
                 }
             }
 
-            expect_token(p, .Keyword_In);
+            expect_token(p, .Keyword_In)
 
-            list := parse_expression(p);
-            if list.Err do return list->err()->unwrap();
+            list := parse_expression(p)
+            if list.Err do return list->err()->unwrap()
 
             for_node := make_node(t, .{
                 Foreach = .{
                     var_name = str.copy(var_tkn.text, as_allocator(&t.node_storage)),
                     list = list->unwrap(),
                 }
-            });
+            })
 
-            *Array.get(instruction_targets, -1) << for_node;
-            instruction_targets << &union_as_ptr(for_node, .Foreach).body;
+            *Array.get(instruction_targets, -1) << for_node
+            instruction_targets << &union_as_ptr(for_node, .Foreach).body
         }
 
         case .Keyword_EndForeach {
-            Array.pop(&instruction_targets);
+            Array.pop(&instruction_targets)
         }
 
         case .Keyword_If {
-            cond := parse_expression(p);
-            if cond->is_err() do return cond->err()->unwrap();
+            cond := parse_expression(p)
+            if cond->is_err() do return cond->err()->unwrap()
 
             if_node := make_node(t, .{
                 Condition = .{ cond = cond->ok()->unwrap() }
-            });
+            })
 
-            *Array.get(instruction_targets, -1) << if_node;
-            instruction_targets << &union_as_ptr(if_node, .Condition).true_block;
+            *Array.get(instruction_targets, -1) << if_node
+            instruction_targets << &union_as_ptr(if_node, .Condition).true_block
         }
 
         case .Keyword_Else {
-            Array.pop(&instruction_targets);
-            if_node := Array.get(*Array.get(instruction_targets, -1), -1);
-            assert(if_node.tag == .Condition, "Expected a Condition node.");
+            Array.pop(&instruction_targets)
+            if_node := Array.get(*Array.get(instruction_targets, -1), -1)
+            assert(if_node.tag == .Condition, "Expected a Condition node.")
 
-            instruction_targets << &union_as_ptr(if_node, .Condition).false_block;
+            instruction_targets << &union_as_ptr(if_node, .Condition).false_block
         }
 
         case .Keyword_EndIf {
-            Array.pop(&instruction_targets);
+            Array.pop(&instruction_targets)
         }
 
         case .Keyword_Let {
-            var_node := parse_expression(p);
-            if var_node->is_err() do return var_node->err()->unwrap();
+            var_node := parse_expression(p)
+            if var_node->is_err() do return var_node->err()->unwrap()
 
-            var := var_node->ok()->unwrap().ExprVar;
+            var := var_node->ok()->unwrap().ExprVar
             if !var do return .{
                 Error = "Expected variable after 'let'."
-            };
+            }
 
-            expect_token(p, '=');
-            value := parse_expression(p);
-            if value->is_err() do return value->err()->unwrap();
+            expect_token(p, '=')
+            value := parse_expression(p)
+            if value->is_err() do return value->err()->unwrap()
 
             let_node := make_node(t, .{
                 Let = .{
                     var->unwrap().var_name,
                     value->ok()->unwrap()
                 }
-            });
+            })
 
-            *Array.get(instruction_targets, -1) << let_node;
+            *Array.get(instruction_targets, -1) << let_node
         }
     }
 
-    return .{ None = .{} };
+    return .{ None = .{} }
 }
 
 #local
 parse_top_expression :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
     switch tkn := p.l->peek(); tkn.type {
         case .Keyword_Block {
-            p.l->consume();
-            name, err := parse_string(p);
-            if err.tag != .None do return .{ Err = err };
+            p.l->consume()
+            name, err := parse_string(p)
+            if err.tag != .None do return .{ Err = err }
 
             return .{
                 Ok = make_node(t, .{
                     ExprBlock = .{ block_name = name }
                 })
-            };
+            }
         }
 
         case .Keyword_Partial {
-            p.l->consume();
-            name, err := parse_string(p);
-            if err.tag != .None do return .{ Err = err };
+            p.l->consume()
+            name, err := parse_string(p)
+            if err.tag != .None do return .{ Err = err }
 
-            args: [..] &TNode;
-            Array.init(&args, 1, allocator=as_allocator(&t.node_storage));
+            args: [..] &TNode
+            Array.init(&args, 1, allocator=as_allocator(&t.node_storage))
 
             while (p.l->peek()).type != .Expression_End {
-                expr := parse_expression(p);
-                if expr.Err do return expr;
+                expr := parse_expression(p)
+                if expr.Err do return expr
 
-                args << expr->ok()->unwrap();
+                args << expr->ok()->unwrap()
             }
 
             partial_expr := make_node(t, .{
                 ExprPartial = .{ name, args }
-            });
+            })
 
-            return .{ Ok = partial_expr };
+            return .{ Ok = partial_expr }
         }
     }
 
-    return parse_expression(p);
+    return parse_expression(p)
 }
 
 #local
 parse_expression :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
-    left := parse_factor(p)?;
-    right: &TNode;
-    root := left;
+    left := parse_factor(p)?
+    right: &TNode
+    root := left
 
     while true {
-        op_type := binary_op_from_token(p.l->peek().type);
-        if !op_type do return .{ Ok = root };
+        op_type := binary_op_from_token(p.l->peek().type)
+        if !op_type do return .{ Ok = root }
 
-        p.l->consume();
-        right := parse_factor(p)?;
+        p.l->consume()
+        right := parse_factor(p)?
 
         root = make_node(t, .{
             ExprBinOp = .{
@@ -540,149 +538,149 @@ parse_expression :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
                 right = right,
                 op = op_type->unwrap()
             }
-        });
+        })
     }
 
-    return .{ Ok = root };
+    return .{ Ok = root }
 }
 
 #local
 parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
-    retval: &TNode = null;
+    retval: &TNode = null
 
     switch tkn := p.l->consume(); tkn.type {
         case .Variable, .Symbol {
-            name := tkn.text |> str.copy(as_allocator(&t.node_storage));
+            name := tkn.text |> str.copy(as_allocator(&t.node_storage))
 
             if next := p.l->peek(); next.type == '(' {
-                retval = parse_call(p, name)?;
-                break;
+                retval = parse_call(p, name)?
+                break
             }
 
             var_expr := make_node(t, .{
                 ExprVar = .{ var_name = name }
-            });
+            })
 
-            retval = var_expr;
+            retval = var_expr
         }
 
         case .Int_Literal {
-            value: i32 = ~~ conv.str_to_i64(tkn.text);
+            value: i32 = ~~ conv.str_to_i64(tkn.text)
 
             int_expr := make_node(t, .{
                 ExprInt = .{ val = value }
-            });
+            })
 
-            retval = int_expr;
+            retval = int_expr
         }
 
         case .String_Literal {
-            value := tkn.text |> str.copy(as_allocator(&t.node_storage));
+            value := tkn.text |> str.copy(as_allocator(&t.node_storage))
 
             str_expr := make_node(t, .{
                 ExprString = .{ val = value }
-            });
+            })
 
-            retval = str_expr;
+            retval = str_expr
         }
 
         case .Keyword_True, .Keyword_False {
             bool_expr := make_node(t, .{
                 ExprBool = .{ val = tkn.type == .Keyword_True }
-            });
+            })
 
-            retval = bool_expr;
+            retval = bool_expr
         }
 
         case '(' {
             defer {
                 if tkn := p.l->consume(); tkn.type != ')' {
-                    return .{ Err = .{ Expected_Token = ')' } };
+                    return .{ Err = .{ Expected_Token = ')' } }
                 }
-            };
-            retval = parse_expression(p)?;
+            }
+            retval = parse_expression(p)?
         }
 
         case _ {
-            return .{ Err = .{ Unexpected_Token = tkn } };
+            return .{ Err = .{ Unexpected_Token = tkn } }
         }
     }
 
     while true do switch tkn := p.l->peek(); tkn.type {
         case '.' {
-            p.l->consume();
+            p.l->consume()
 
             if tkn := p.l->peek(); tkn.type != .Symbol {
-                return .{ Err = .{ Unexpected_Token = tkn } };
+                return .{ Err = .{ Unexpected_Token = tkn } }
             }
 
-            sym_tkn := p.l->consume();
+            sym_tkn := p.l->consume()
 
             select_expr := make_node(t, .{
                 ExprSelector = .{
                     var = retval,
                     field = sym_tkn.text |> str.copy(as_allocator(&t.node_storage)),
                 }
-            });
+            })
 
-            retval = select_expr;
+            retval = select_expr
         }
 
         case '[' {
-            p.l->consume();
+            p.l->consume()
 
-            expr := parse_expression(p);
-            if expr->is_err() do return expr;
+            expr := parse_expression(p)
+            if expr->is_err() do return expr
 
             subscript_expr := make_node(t, .{
                 ExprSubscript = .{ var = retval, sub = expr->ok()->unwrap() }
-            });
+            })
 
-            retval = subscript_expr;
+            retval = subscript_expr
 
             if tkn := p.l->peek(); tkn.type != ']' {
-                return .{ Err = .{ Unexpected_Token = .{} } };
+                return .{ Err = .{ Unexpected_Token = .{} } }
             }
 
-            p.l->consume();
+            p.l->consume()
         }
 
-        case _ do break break;
+        case _ do break break
     }
 
-    return .{ Ok = retval };
+    return .{ Ok = retval }
 }
 
 #local
 parse_string :: (use p: &TemplateParser) -> (str, ParseError) {
-    str_tkn := p.l->consume();
+    str_tkn := p.l->consume()
     if str_tkn.type != .String_Literal {
-        return "", .{ Unexpected_Token = str_tkn };
+        return "", .{ Unexpected_Token = str_tkn }
     }
 
-    value := str_tkn.text |> str.copy(as_allocator(&t.node_storage));
+    value := str_tkn.text |> str.copy(as_allocator(&t.node_storage))
 
-    return value, .{ None = .{} };
+    return value, .{ None = .{} }
 }
 
 #local
 parse_call :: (use p: &TemplateParser, name: str) -> Result(&TNode, ParseError) {
     p.l->consume(); // (
 
-    args: [..] &TNode;
+    args: [..] &TNode
     while true {
-        expr := parse_expression(p)?;
-        args << expr;
+        expr := parse_expression(p)?
+        args << expr
 
-        next := p.l->peek().type;
+        next := p.l->peek().type
         if next != ')' {
             if next != ',' {
-                return .{ Err = ParseError.{Expected_Token = ','} };
+                return .{ Err = ParseError.{Expected_Token = ','} }
             }
 
-            p.l->consume();
+            p.l->consume()
         } else {
-            break;
+            break
         }
     }
 
@@ -695,7 +693,7 @@ parse_call :: (use p: &TemplateParser, name: str) -> Result(&TNode, ParseError) 
                 arguments = args
             }
         })
-    };
+    }
 }
 
 #local
@@ -704,35 +702,35 @@ expect_token :: #match #local {}
 #overload
 expect_token :: macro (p: &TemplateParser, type: TemplateToken.Type, out: Code) {
     if (p.l->peek()).type != type {
-        return ParseError.{ Expected_Token = type };
+        return ParseError.{ Expected_Token = type }
     }
 
-    (#unquote out) = p.l->consume();
+    (#unquote out) = p.l->consume()
 }
 
 #overload
 expect_token :: macro (p: &TemplateParser, type: TemplateToken.Type) {
     if (p.l->peek()).type != type {
-        return ParseError.{ Expected_Token = type };
+        return ParseError.{ Expected_Token = type }
     }
 
-    p.l->consume();
+    p.l->consume()
 }
 
 
 #package
 make_node :: macro (t: &Template, v: TNode) -> &TNode {
-    r := new(TNode, allocator=as_allocator(&t.node_storage));
-    *r = v;
-    return r;
+    r := new(TNode, allocator=as_allocator(&t.node_storage))
+    *r = v
+    return r
 }
 
 #package
 union_as_ptr :: macro (u: & $U, variant: U.tag_enum) => {
     return switch u {
-        case variant as &v => v;
-        case _ => null;
-    };
+        case variant as &v => v
+        case _ => null
+    }
 }
 
 #local
@@ -752,7 +750,7 @@ binary_op_from_token :: (type: TemplateToken.Type) -> ? BinaryOp {
         case '>'             => BinaryOp.Gt
         case .Greater_Equals => BinaryOp.Ge
 
-        case _ => (? BinaryOp).{};
-    };
+        case _ => (? BinaryOp).{}
+    }
 }
 
