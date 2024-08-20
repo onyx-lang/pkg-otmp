@@ -1,0 +1,72 @@
+#load "core/onyx/compiler_extension"
+
+use core {*}
+use onyx.compiler_extension {*}
+
+templates: [..] struct {
+    name: str
+    code: str
+}
+
+main :: () {
+    ext := ExtensionContext.make("OTMP Inline Templates")
+
+    ext->handle_macro("inline_template", expand_inline_template)
+
+    // When the compiler is stalled, it has done everything that it can to make progress
+    // but it is unable to. The assumption here is that this is because the symbol
+    // `__define_inline_templates` is not yet defined. `handle_stalled` will generate that
+    // function which will let the compilation proceed.
+    ext->handle_hook(.Stalled, handle_stalled)
+
+    ext->start(message_handler)
+}
+
+handle_stalled :: (ext, info) => {
+    #persist handled_stalled := false
+    if handled_stalled do return
+    handled_stalled = true
+
+    code: dyn_str
+    code->append("package otmp\n")
+    code->append("#package __define_inline_templates :: (reg: &TemplateRegistry) {\n")
+
+    for templates {
+        conv.format(&code, "reg->define_template(\"{}\", \"\"\"{}\"\"\")\n", it.name, it.code)
+    }
+
+    code->append("}")
+
+    ext->send(.{
+        InjectCode = .{
+            code
+        }
+    })
+}
+
+expand_inline_template :: (ext: &ExtensionContext, em: ExpansionInfo) -> Result(str, ExpansionFailureReason) {
+    #persist next_view_id := 1
+    id := aprintf("_generated_template_{}", next_view_id)
+    next_view_id += 1
+
+    templates->push(.{ id, str.copy(em.body) })
+
+    return .{ Ok = tprintf("\"{}\"", id) }
+}
+
+message_handler :: (ext, msg) => {
+    switch msg {
+        case .ExpandMacro as em {
+            ext->send(.{
+                Expansion = .{
+                    id = em.id
+                    code = .{ Err = .NotSupported }
+                }
+            })
+        }
+
+        case _ ---
+    }
+}
+
+

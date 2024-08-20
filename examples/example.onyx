@@ -2,11 +2,18 @@
 #load "./../module"
 
 use core {*}
-use otmp
+use otmp {
+    package,
+    inline_template
+}
+
+use runtime
+runtime.vars.OTMP_ENABLE_INLINE_TEMPLATES :: true
 
 main :: () {
     registry := otmp.registry()
     registry->load_directory("./templates", ".html")
+    registry->define_inline_templates()
 
     registry->define_proc("testing", (a: str, b: i32) -> [] i32 {
         printf("This works! {} {}\n", a, b)
@@ -18,6 +25,13 @@ main :: () {
 
 
     registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] }, test_arr=cast([] u32) u32.[1] })
+    io.stream_flush(&stdio.stream)
+
+    test_template :: inline_template!{
+        Message: {% message %}
+    }
+
+    registry->render_template(test_template, &stdio.print_writer, &.{ message = "Inline templates are working" })
     io.stream_flush(&stdio.stream)
 }
 

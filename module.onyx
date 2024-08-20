@@ -2,4 +2,9 @@ package otmp
 
 #load_all "./src"
 
+use runtime {vars}
+#if #defined(vars.OTMP_ENABLE_INLINE_TEMPLATES) {
+    #load "./src/inline/inline_templates.onyx"
+}
+
 
