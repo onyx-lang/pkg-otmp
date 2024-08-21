@@ -18,7 +18,7 @@
         foo is {% foo %}
 
         {{ foreach t in testing("Test string!", 10) }}
-            <p>This is {% t %}</p>
+            <p>This is {% t %} at {% __index %}</p>
         {{ endforeach }}
 
         {{ if test_arr }}

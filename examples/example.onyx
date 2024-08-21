@@ -33,5 +33,19 @@ main :: () {
 
     registry->render_template(test_template, &stdio.print_writer, &.{ message = "Inline templates are working" })
     io.stream_flush(&stdio.stream)
+
+
+    registry->define_template("_layout", """
+        HEADER
+        ------
+
+        {% block "__content" %}
+    """)
+
+    use renderer := registry->prepare_renderer("_layout", &stdio.print_writer)!
+    renderer->define_block("__content", inline_template!{
+        This content was defined inside of a view
+    })
+    renderer->render()
 }
 

@@ -1,7 +1,7 @@
 package otmp
 
 use core.alloc {as_allocator, arena}
-use core {package, io, os, misc, tprintf, printf}
+use core {package, io, os, misc, tprintf, printf, Result}
 
 //
 // Template Registry
@@ -112,6 +112,8 @@ TemplateRegistry.define_template :: (self: &TemplateRegistry, name: str, templat
 
 TemplateRegistry.refresh_templates :: (self: &TemplateRegistry) {
     for &temp in self.templates.entries {
+        if temp.value.filepath == "<inline>" do continue
+
         Array.clear(&temp.value.instructions)
         arena.clear(&temp.value.node_storage)
 
@@ -123,30 +125,40 @@ TemplateRegistry.refresh_templates :: (self: &TemplateRegistry) {
     }
 }
 
-TemplateRegistry.get_template :: (self: &TemplateRegistry, name: str) -> &Template {
-    return self.templates[name] ?? null
-}
-
 TemplateRegistry.render_template :: #match #local {}
 
 #overload
-TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: &Map(str, any)) -> Error {
+TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: Map(str, any)) -> Error {
     temp := self.templates[name] ?? null
     if temp == null {
         return .Template_Not_Found
     }
 
-    return temp->render(self, scope, output)
+    use r := TemplateRenderer.make(temp, output, self)
+    r->define_vars(scope)
+
+    err := r->render()
+    if err != .None { logf(.Error, "Template Rendering Error: {}\n", r.error) }
+
+    return err
 }
 
 #overload
 TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output: &io.Writer, scope: any) -> Error {
-    tscope := core.misc.any_to_map(scope)->or_return(Error.Render_Error)
-    defer delete(&tscope)
+    use tscope := core.misc.any_to_map(scope)->or_return(Error.Render_Error)
 
-    return self->render_template(name, output, &tscope)
+    return self->render_template(name, output, tscope)
 }
 
+
+TemplateRegistry.prepare_renderer :: (self: &TemplateRegistry, name: str, output: &io.Writer) -> Result(TemplateRenderer, Error) {
+    temp := self.templates[name] ?? null
+    if temp == null {
+        return .{ Err = .Template_Not_Found }
+    }
+
+    return .{ Ok = TemplateRenderer.make(temp, output, self) }
+}
 
 
 
@@ -165,25 +177,6 @@ delete :: (t: &Template) {
     delete(&t.instructions)
     arena.free(&t.node_storage)
 }
-
-Template.render :: (self: &Template, reg: &TemplateRegistry, scope: &TemplateScope, output: &io.Writer) -> Error {
-    r := &TemplateRenderer.{
-        t = self,
-        w = output,
-        reg = reg,
-        scope = scope
-    }
-
-    err := render_template(r)
-
-    if err != .None {
-        logf(.Error, "Template Error: {}\n", r.error)
-    }
-
-    return err
-}
-
-
 
 
 

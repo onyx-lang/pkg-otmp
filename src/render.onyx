@@ -1,6 +1,6 @@
 package otmp
 
-use core {package, io, tprintf, iter, Optional, conv, alloc}
+use core {package, io, tprintf, Optional, conv, alloc}
 use core.misc {
     as_any,
     any_as,
@@ -10,22 +10,67 @@ use core.misc {
     any_subscript
 }
 
-#package
 TemplateRenderer :: struct {
     t: &Template
     w: &io.Writer
     reg: &TemplateRegistry
 
-    scope: &TemplateScope
-    blocks: Map(str, &TNode)
-
-    index_variable: &i32
+    scope: TemplateScope
+    blocks: Map(str, [..] &TNode)
 
     error: str
 }
 
-#package
-render_template :: (use r: &TemplateRenderer) -> Error {
+TemplateRenderer.make :: (t: &Template, w: &io.Writer, reg: &TemplateRegistry) -> (out: TemplateRenderer) {
+    out.t = t
+    out.w = w
+    out.reg = reg
+
+    out.scope = make(Map(str, any))
+    out.blocks = make(Map(str, [..] &TNode))
+    return
+}
+
+TemplateRenderer.destroy :: (use r: &TemplateRenderer) {
+    delete(&scope)
+    delete(&blocks)
+}
+
+TemplateRenderer.define_block :: #match #local {}
+
+#overload
+TemplateRenderer.define_block :: (use r: &TemplateRenderer, block_name: str, template_name: str) -> Error {
+    template := reg.templates[template_name] ?? null
+    if template == null {
+        return .Template_Not_Found
+    }
+
+    blocks[block_name] = template.instructions
+    return .None
+}
+
+#overload
+TemplateRenderer.define_block :: (use r: &TemplateRenderer, block_name: str, contents: [..] &TNode) -> Error {
+    if blocks->has(block_name) {
+        error = tprintf("Block '{}' defined multiple times.", block_name)
+        return .Render_Error
+    }
+
+    blocks[block_name] = contents
+    return .None
+}
+
+TemplateRenderer.define_var :: (use r: &TemplateRenderer, name: str, val: any) {
+    scope->put(name, val)
+}
+
+TemplateRenderer.define_vars :: (use r: &TemplateRenderer, vars: Map(str, any)) {
+    for vars.entries {
+        scope->put(it.key, it.value)
+    }
+}
+
+TemplateRenderer.render :: (use r: &TemplateRenderer) -> Error {
     return render_instructions(r, t.instructions)
 }
 
@@ -36,33 +81,27 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             case .Text as text do io.write_str(w, text)
 
             case .Block as &block {
-                if blocks->has(block.block_name) {
-                    error = tprintf("Block '{}' defined multiple times.", block.block_name)
-                    return .Render_Error
-                }
-
-                blocks[block.block_name] = it
+                r->define_block(block.block_name, block.contents)
             }
 
             case .Extend as template_name {
-                template := reg->get_template(template_name)
-                if template == null {
-                    error = tprintf("Template '{}' not found.")
-                    return .Render_Error
-                }
-
-                if err := render_instructions(r, template.instructions); err != .None {
-                    return err
+                template := reg.templates[template_name]
+                switch template {
+                    case .None {
+                        error = tprintf("Template '{}' not found.")
+                        return .Render_Error
+                    }
+                    case .Some as template {
+                        if err := render_instructions(r, template.instructions); err != .None {
+                            return err
+                        }
+                    }
                 }
             }
 
             case .Foreach as &for_node {
-                if !r.index_variable {
-                    r.index_variable = new_temp(i32)
-                }
-
-                *r.index_variable = 0
-                scope->put("__index", as_any(r.index_variable))
+                index_variable := new_temp(0)
+                scope->put("__index", as_any(index_variable))
 
                 evaluate_expr(r, for_node.list)->with([list] {
                     for any_iter(list) {
@@ -72,11 +111,13 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                             return err
                         }
 
-                        *r.index_variable += 1
+                        *index_variable += 1
                     }
 
                     scope->delete(for_node.var_name)
                 })
+
+                scope->delete("__index")
             }
 
             case .Condition as &cond {
@@ -107,43 +148,39 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             }
 
             case .ExprBlock as &block {
-                blocks->get(block.block_name)->with([the_block] {
-                    if err := render_instructions(r, union_as_ptr(the_block, .Block).contents); err != .None {
+                blocks->get(block.block_name)->with([contents] {
+                    if err := render_instructions(r, contents); err != .None {
                         return err
                     }
                 })
             }
 
             case .ExprPartial as &partial {
-                template := reg->get_template(partial.partial_name)
+                template := reg.templates[partial.partial_name]
                 if !template {
                     logf(.Error, "Partial '{}' not found.", partial.partial_name)
                     continue
                 }
 
                 oldScope := scope
+                scope = Map.copy(&oldScope)
                 defer {
-                    delete(scope)
-                    cfree(scope)
+                    delete(&scope)
                     scope = oldScope
                 }
 
-                scope = Map.copy(oldScope) |> alloc.on_heap()
-
-                for arg in iter.as_iter(partial.arguments)
-                    |> iter.enumerate()
-                {
+                for arg, index in partial.arguments {
                     // ROBUSTNESS: Normally, allocating to a temporary allocator for
                     // something stored in a map is a bad idea, but here, because the
                     // map is only used within this function, so long as the temporary
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
-                    evaluate_expr(r, arg.value)->with([v] {
-                        scope->put(tprintf("_{}", arg.index), v)
+                    evaluate_expr(r, arg)->with([v] {
+                        scope->put(tprintf("_{}", index), v)
                     })
                 }
 
-                if err := render_instructions(r, template.instructions); err != .None {
+                if err := render_instructions(r, template!.instructions); err != .None {
                     return err
                 }
             }
