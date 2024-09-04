@@ -110,6 +110,23 @@ TemplateRegistry.define_template :: (self: &TemplateRegistry, name: str, templat
     return .None
 }
 
+TemplateRegistry.define_alias :: (self: &TemplateRegistry, alias: str, existing: str) -> Error {
+    template := self.templates->get(existing)
+    if !template {
+        return .Template_Not_Found
+    }
+
+    if self.templates->has(alias) {
+        logf(.Error, "Template '{}' already exists.\n")
+        return .Duplicate_Template
+    }
+
+    permanent_name := str.copy(alias, as_allocator(&self.arena))
+    self.templates->put(permanent_name, template!)
+
+    return .None
+}
+
 TemplateRegistry.refresh_templates :: (self: &TemplateRegistry) {
     for &temp in self.templates.entries {
         if temp.value.filepath == "<inline>" do continue

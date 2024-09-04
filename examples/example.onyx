@@ -35,12 +35,12 @@ main :: () {
     io.stream_flush(&stdio.stream)
 
 
-    registry->define_template("_layout", """
+    registry->define_alias("_layout", inline_template!{
         HEADER
         ------
 
         {% block "__content" %}
-    """)
+    })
 
     use renderer := registry->prepare_renderer("_layout", &stdio.print_writer)!
     renderer->define_block("__content", inline_template!{
