@@ -117,11 +117,11 @@ TemplateLexer.eat_characters :: (self: &TemplateLexer, chars := 1) -> str {
 TemplateLexer.eat_whitespace :: (self: &TemplateLexer) {
     while !str.empty(*self.s) {
         switch self.s.data[0] {
-            case #char "\n", #char "\t", #char "\r", #char " " {
+            case '\n', '\t', '\r', ' ' {
                 self->eat_characters(1)
             }
 
-            case #default {
+            case _ {
                 break break
             }
         }
@@ -402,7 +402,7 @@ parse_statement :: (use p: &TemplateParser) -> ParseError {
             var_tkn: TemplateToken
             switch p.l->peek().type {
                 case .Variable, .Symbol do var_tkn = p.l->consume()
-                case #default {
+                case _ {
                     return ParseError.{ Expected_Token = .Symbol }
                 }
             }
