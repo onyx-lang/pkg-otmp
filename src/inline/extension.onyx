@@ -1,4 +1,4 @@
-#load "core/onyx/compiler_extension"
+#load "core:onyx/compiler_extension"
 
 use core {*}
 use onyx.compiler_extension {*}

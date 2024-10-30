@@ -214,9 +214,16 @@ evaluate_expr :: (use r: &TemplateRenderer, expr: &TNode) -> ? any {
 
         // foo.bar
         case .ExprSelector as &selector {
-            return evaluate_expr(r, selector.var)?
+            expr := evaluate_expr(r, selector.var)?
                 |> any_dereference()
-                |> any_selector(selector.field)
+
+            if k := expr.type->info().kind; selector.field == "count" && (k == .Slice || k == .Dynamic_Array) {
+                length := new_temp(i32)
+                *length = cast(&Slice(void), expr.data).count
+                return as_any(length)
+            }
+
+            return expr |> any_selector(selector.field)
         }
 
         // foo[bar]

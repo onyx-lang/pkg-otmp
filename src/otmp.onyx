@@ -208,7 +208,7 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ([] a
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1) -> $R) {
     set_temporary_allocator_to_internal_arena(self)
-    self.functions[name] = (args, [proc]) => {
+    self.functions[name] = (args) use (proc) => {
         res := proc(
             *misc.any_as(args[0], A1)
         )
@@ -220,7 +220,7 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1)
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2) -> $R) {
     set_temporary_allocator_to_internal_arena(self)
-    self.functions[name] = (args, [proc]) => {
+    self.functions[name] = (args) use (proc) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2)
@@ -233,7 +233,7 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1,
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3) -> $R) {
     set_temporary_allocator_to_internal_arena(self)
-    self.functions[name] = (args, [proc]) => {
+    self.functions[name] = (args) use (proc) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2),
@@ -247,7 +247,7 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1,
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4) -> $R) {
     set_temporary_allocator_to_internal_arena(self)
-    self.functions[name] = (args, [proc]) => {
+    self.functions[name] = (args) use (proc) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2),
@@ -262,7 +262,7 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1,
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4, $A5) -> $R) {
     set_temporary_allocator_to_internal_arena(self)
-    self.functions[name] = (args, [proc]) => {
+    self.functions[name] = (args) use (proc) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2),
@@ -278,7 +278,7 @@ TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1,
 #overload
 TemplateRegistry.define_proc :: (self: &TemplateRegistry, name: str, proc: ($A1, $A2, $A3, $A4, $A5, $A6) -> $R) {
     set_temporary_allocator_to_internal_arena(self)
-    self.functions[name] = (args, [proc]) => {
+    self.functions[name] = (args) use (proc) => {
         res := proc(
             *misc.any_as(args[0], A1),
             *misc.any_as(args[1], A2),
