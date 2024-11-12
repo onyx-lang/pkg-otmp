@@ -28,8 +28,8 @@ handle_stalled :: (ext, info) => {
     handled_stalled = true
 
     code: dyn_str
-    code->append("package otmp\n")
-    code->append("#package __define_inline_templates :: (reg: &TemplateRegistry) {\n")
+    code->append("package otmp\n\n")
+    code->append("__define_inline_templates :: (reg: &TemplateRegistry) {\n")
 
     for templates {
         conv.format(&code, "reg->define_template(\"{}\", \"\"\"{}\"\"\")\n", it.name, it.code)
