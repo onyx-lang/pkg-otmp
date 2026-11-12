@@ -92,7 +92,7 @@ TemplateLexer.peek :: (self: &TemplateLexer, n := 0) -> TemplateToken {
 TemplateLexer.consume :: (self: &TemplateLexer) -> TemplateToken {
     if !Array.empty(self.token_buffer) {
         tkn := self.token_buffer[0]
-        Array.delete(&self.token_buffer, 0)
+        Array.remove_at(&self.token_buffer, 0)
         return tkn
     }
 
@@ -565,7 +565,7 @@ parse_factor :: (use p: &TemplateParser) -> Result(&TNode, ParseError) {
         }
 
         case .Int_Literal {
-            value: i32 = ~~ conv.str_to_i64(tkn.text)
+            value: i32 = ~~ conv.parse_int(tkn.text)
 
             int_expr := make_node(t, .{
                 ExprInt = .{ val = value }

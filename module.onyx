@@ -1,6 +1,6 @@
 package otmp
 
-#load_all "./src"
+#load "./src"
 
 use runtime {vars}
 #if #defined(vars.OTMP_ENABLE_INLINE_TEMPLATES) {

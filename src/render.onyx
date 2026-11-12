@@ -1,6 +1,7 @@
 package otmp
 
-use core {package, io, tprintf, Optional, conv, alloc}
+use core {package, tprintf, Optional, conv, alloc}
+use core.io {Writer}
 use core.misc {
     as_any,
     any_as,
@@ -12,7 +13,7 @@ use core.misc {
 
 TemplateRenderer :: struct {
     t: &Template
-    w: &io.Writer
+    w: &Writer
     reg: &TemplateRegistry
 
     scope: TemplateScope
@@ -21,7 +22,7 @@ TemplateRenderer :: struct {
     error: str
 }
 
-TemplateRenderer.make :: (t: &Template, w: &io.Writer, reg: &TemplateRegistry) -> (out: TemplateRenderer) {
+TemplateRenderer.make :: (t: &Template, w: &Writer, reg: &TemplateRegistry) -> (out: TemplateRenderer) {
     out.t = t
     out.w = w
     out.reg = reg
@@ -78,7 +79,7 @@ TemplateRenderer.render :: (use r: &TemplateRenderer) -> Error {
 render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error {
     for instrs {
         switch it {
-            case .Text as text do io.write_str(w, text)
+            case .Text as text do Writer.write_str(w, text)
 
             case .Block as &block {
                 r->define_block(block.block_name, block.contents)
@@ -103,7 +104,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 index_variable := new_temp(0)
                 scope->put("__index", as_any(index_variable))
 
-                evaluate_expr(r, for_node.list)->with([list] {
+                if evaluate_expr(r, for_node.list) as list {
                     for any_iter(list) {
                         scope->put(for_node.var_name, it)
 
@@ -114,10 +115,10 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                         *index_variable += 1
                     }
 
-                    scope->delete(for_node.var_name)
-                })
+                    scope->remove(for_node.var_name)
+                }
 
-                scope->delete("__index")
+                scope->remove("__index")
             }
 
             case .Condition as &cond {
@@ -125,14 +126,14 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                                     ->transform(any_is_truthy)
                 
                 rendered := false
-                condition_value->with([truth] {
+                if condition_value as truth {
                     if truth {
                         rendered = true
                         if err := render_instructions(r, cond.true_block); err != .None {
                             return err
                         }
                     }
-                })
+                }
 
                 if !rendered {
                     if err := render_instructions(r, cond.false_block); err != .None {
@@ -142,17 +143,17 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
             }
 
             case .Let as &let {
-                evaluate_expr(r, let.value)->with([value] {
+                if evaluate_expr(r, let.value) as value {
                     scope->put(let.var_name, value)
-                })
+                }
             }
 
             case .ExprBlock as &block {
-                blocks->get(block.block_name)->with([contents] {
+                if blocks->get(block.block_name) as contents {
                     if err := render_instructions(r, contents); err != .None {
                         return err
                     }
-                })
+                }
             }
 
             case .ExprPartial as &partial {
@@ -175,9 +176,9 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                     // map is only used within this function, so long as the temporary
                     // allocator is never cleared, there is nothing wrong with using
                     // tprintf.
-                    evaluate_expr(r, arg)->with([v] {
+                    if evaluate_expr(r, arg) as v {
                         scope->put(tprintf("_{}", index), v)
-                    })
+                    }
                 }
 
                 if err := render_instructions(r, template!.instructions); err != .None {
@@ -196,7 +197,7 @@ render_instructions :: (use r: &TemplateRenderer, instrs: [..] &TNode) -> Error 
                 // the wrong any is returned. Unwrapping as a pointer fixes this
                 // bug.
                 value_ := value->unwrap_ptr()
-                io.write_format_va(w, "{}", .[*value_])
+                Writer.write_format_va(w, "{}", .[*value_])
             }
         }
     }
@@ -370,7 +371,9 @@ any_to_int :: (v: any) -> ? i64 {
 
 #local
 any_is_truthy :: (v: any) -> bool {
-    any_to_int(v)->with([x] { return x != 0; })
+    if any_to_int(v) as x {
+        return x != 0
+    }
 
     switch v.type {
         case bool do return *cast(&bool, v.data)

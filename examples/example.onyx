@@ -24,15 +24,16 @@ main :: () {
     })
 
 
-    registry->render_template("test", &stdio.print_writer, &.{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] }, test_arr=cast([] u32) u32.[1] })
-    io.stream_flush(&stdio.stream)
+    data := .{ var="Variable worked!", num=68, bar = .{ list=.[1,2,3] }, test_arr=cast([] u32) u32.[1] }
+    registry->render_template("test", &stdio.print_writer, &data)
+    io.Stream.flush(&stdio.stream)
 
     test_template :: inline_template!{
         Message: {% message %}
     }
 
     registry->render_template(test_template, &stdio.print_writer, &.{ message = "Inline templates are working" })
-    io.stream_flush(&stdio.stream)
+    io.Stream.flush(&stdio.stream)
 
 
     registry->define_alias("_layout", inline_template!{

@@ -1,6 +1,7 @@
 package otmp
 
-use core.alloc {as_allocator, arena}
+use core.alloc {as_allocator}
+use core.alloc.arena {Arena}
 use core {package, io, os, misc, tprintf, printf, Result}
 
 //
@@ -9,7 +10,7 @@ use core {package, io, os, misc, tprintf, printf, Result}
 
 registry :: () -> TemplateRegistry {
     t: TemplateRegistry
-    t.arena = arena.make(context.allocator, 64 * 1024)
+    t.arena = Arena.make(context.allocator, 64 * 1024)
     t.templates->init()
     t.functions->init()
 
@@ -23,12 +24,12 @@ delete :: (t: &TemplateRegistry) {
     }
 
     delete(&t.templates)
-    arena.free(&t.arena)
+    Arena.free(&t.arena)
 }
 
 TemplateRegistry.load_directory :: (self: &TemplateRegistry, dir: str, extension: str) {
     recurse :: (self: &TemplateRegistry, dir, prefix, extension: str) {
-        for os.list_directory(dir) {
+        for os.Directory.list(dir) {
             it_name := it->name()
 
             if it_name == "." || it_name == ".." {
@@ -40,20 +41,20 @@ TemplateRegistry.load_directory :: (self: &TemplateRegistry, dir: str, extension
                 name = name[0 .. str.last_index_of(name, '.')]
 
                 if prefix {
-                    name = os.path_join(prefix, name)
+                    name = os.Path.join(prefix, name)
                 }
 
-                self->load_template(name, os.path_join(dir, it_name))
+                self->load_template(name, os.Path.join(dir, it_name))
             }
 
             if it.type == .Directory {
                 p := it_name
                 if prefix {
-                    p = os.path_join(prefix, it_name)
+                    p = os.Path.join(prefix, it_name)
                 }
 
                 recurse(self,
-                    os.path_join(dir, it_name),
+                    os.Path.join(dir, it_name),
                     p,
                     extension)
             }
@@ -132,7 +133,7 @@ TemplateRegistry.refresh_templates :: (self: &TemplateRegistry) {
         if temp.value.filepath == "<inline>" do continue
 
         Array.clear(&temp.value.instructions)
-        arena.clear(&temp.value.node_storage)
+        Arena.clear(&temp.value.node_storage)
 
         contents := os.get_contents(temp.value.filepath)
         stored_contents := contents
@@ -185,14 +186,14 @@ TemplateRegistry.prepare_renderer :: (self: &TemplateRegistry, name: str, output
 #package
 template_make :: (alloc: Allocator) -> &Template {
     t := new(Template, alloc)
-    t.node_storage = arena.make(context.allocator, 64 * 1024)
+    t.node_storage = Arena.make(context.allocator, 64 * 1024)
     return t
 }
 
 #overload
 delete :: (t: &Template) {
     delete(&t.instructions)
-    arena.free(&t.node_storage)
+    Arena.free(&t.node_storage)
 }
 
 
