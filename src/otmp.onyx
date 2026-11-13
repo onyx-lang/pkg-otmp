@@ -152,7 +152,9 @@ TemplateRegistry.render_template :: (self: &TemplateRegistry, name: str, output:
         return .Template_Not_Found
     }
 
-    use r := TemplateRenderer.make(temp, output, self)
+    r := TemplateRenderer.make(temp, output, self)
+    defer r->destroy()
+
     r->define_vars(scope)
 
     err := r->render()
